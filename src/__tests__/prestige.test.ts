@@ -27,6 +27,7 @@ import type { GameState, PermUpgradeDef } from '../game/types';
 function withLifetimeCash(cash: number | string): GameState {
   const state = createInitialState();
   state.resources.lifetimeCash = dec(cash as number);
+  state.prestige.baselineLifetimeCash = ZERO;
   return state;
 }
 

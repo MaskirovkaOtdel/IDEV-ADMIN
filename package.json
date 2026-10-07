@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "simulate": "tsx tools/balance-sim.ts",
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -39,6 +40,7 @@
     "postcss": "^8.5.29",
     "prettier": "^3.9.9",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.3"

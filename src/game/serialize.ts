@@ -14,7 +14,7 @@
  */
 import type { GameState, GeneratorId, PermUpgradeId, SaveBlob, UpgradeId } from './types';
 import { GENERATOR_IDS, RESOURCE_IDS } from './types';
-import { decSafe, intSafe, numSafe, ZERO } from './decimal';
+import { dec, decSafe, intSafe, numSafe, ZERO } from './decimal';
 import { UPGRADE_DEFS } from './upgrades';
 import { PERM_UPGRADE_DEFS } from './permUpgrades';
 import { CURRENT_SAVE_VERSION } from './prestige';
@@ -22,6 +22,15 @@ import { requireGenDef } from './generators';
 
 const KNOWN_UPGRADE_IDS = new Set<UpgradeId>(UPGRADE_DEFS.map((u) => u.id));
 const KNOWN_PERM_IDS = new Set<PermUpgradeId>(PERM_UPGRADE_DEFS.map((u) => u.id));
+
+/**
+ * Starting cash for a brand-new game.
+ *
+ * Without this the game is softlocked: the cheapest generator costs
+ * STARTING_CASH_TIERS times this amount, and a fresh state has no resources and
+ * no production, so there is no way to earn the first one.
+ */
+export const STARTING_CASH = 25;
 
 /** A brand-new game at the current schema version. */
 export function createInitialState(now: number = Date.now()): GameState {
@@ -35,7 +44,7 @@ export function createInitialState(now: number = Date.now()): GameState {
     resources: {
       linesOfCode: ZERO,
       coffee: ZERO,
-      cash: ZERO,
+      cash: dec(STARTING_CASH),
       lifetimeCash: ZERO,
     },
     generators,
@@ -235,6 +244,8 @@ export function deserializeState(json: string, now: number = Date.now()): GameSt
   const generators = {} as GameState['generators'];
 
   const lifetimeCash = safeResource(blob.resources.lifetimeCash);
+  const cash = safeResource(blob.resources.cash);
+  const totalOwned = GENERATOR_IDS.reduce((sum, id) => sum + intSafe(blob.generators[id], 0), 0);
 
   for (const id of GENERATOR_IDS) {
     const owned = intSafe(blob.generators[id], 0);
@@ -247,12 +258,22 @@ export function deserializeState(json: string, now: number = Date.now()): GameSt
     };
   }
 
+  // Top up a save that is verifiably a fresh start (nothing bought, nothing
+  // earned) so an old save cannot remain softlocked. A save with real progress
+  // is left exactly as it was.
+  const isFreshStart =
+    totalOwned === 0 &&
+    lifetimeCash.eq(ZERO) &&
+    !lifetimeCash.greaterThan(ZERO) &&
+    cash.lessThan(requireGenDef('juniorDev').baseCost);
+  const resolvedCash = isFreshStart ? dec(STARTING_CASH) : cash;
+
   return {
     version: CURRENT_SAVE_VERSION,
     resources: {
       linesOfCode: safeResource(blob.resources.linesOfCode),
       coffee: safeResource(blob.resources.coffee),
-      cash: safeResource(blob.resources.cash),
+      cash: resolvedCash,
       lifetimeCash: safeResource(blob.resources.lifetimeCash),
     },
     generators,

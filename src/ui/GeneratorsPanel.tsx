@@ -8,12 +8,13 @@ import { useMemo } from 'react';
 import { GeneratorCard } from '../components/GeneratorCard';
 import { EmptyState } from './EmptyState';
 import { useGameStore } from '../game/gameStore';
-import { GENERATOR_DEFS } from '../game/generators';
+import { GENERATOR_DEFS, requireGenDef } from '../game/generators';
 import { formatDecimal } from '../game/formulas';
 
 export function GeneratorsPanel() {
   const generators = useGameStore((s) => s.gameState.generators);
   const lifetimeCash = useGameStore((s) => s.gameState.resources.lifetimeCash);
+  const cash = useGameStore((s) => s.gameState.resources.cash);
 
   const { unlocked, nextLocked } = useMemo(() => {
     const unlockedIds = GENERATOR_DEFS.filter((def) => generators[def.id].unlocked);
@@ -29,7 +30,9 @@ export function GeneratorsPanel() {
     [generators]
   );
 
-  if (totalOwned === 0 && lifetimeCash.lessThan(15)) {
+  // Show the empty state only until the first hire is affordable — a fresh game
+  // starts with cash, so gating on lifetime cash alone hid the cards.
+  if (totalOwned === 0 && cash.lessThan(requireGenDef('juniorDev').baseCost)) {
     return (
       <EmptyState
         message="Nothing but an empty repo. Hire your first Junior Dev to get the build passing."

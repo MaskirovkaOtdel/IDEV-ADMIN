@@ -8,11 +8,14 @@
 import { describe, it, expect } from 'vitest';
 import { applyOfflineProgress, offlineSecondsFor, OFFLINE_EFFICIENCY, MAX_OFFLINE_SECONDS } from '../game/offline';
 import { createInitialState } from '../game/serialize';
-import { dec } from '../game/decimal';
+import { dec, ZERO } from '../game/decimal';
 import type { GameState } from '../game/types';
 
 function withGenerators(): GameState {
   const state = createInitialState();
+  // A fresh game grants STARTING_CASH; zero it so these tests measure only
+  // offline production.
+  state.resources.cash = ZERO;
   state.generators.juniorDev = { owned: 100, unlocked: true };
   return state;
 }

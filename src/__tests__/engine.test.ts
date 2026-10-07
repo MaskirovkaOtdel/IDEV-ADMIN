@@ -4,12 +4,14 @@
 import { describe, it, expect } from 'vitest';
 import { engineTick, computeProductionSnapshot, MAX_DELTA_SECONDS } from '../game/engine';
 import { createInitialState } from '../game/serialize';
-import { dec } from '../game/decimal';
+import { dec, ZERO } from '../game/decimal';
 import { GENERATOR_DEFS } from '../game/generators';
 import type { GameState, GeneratorId } from '../game/types';
 
 function stateWith(owned: Partial<Record<GeneratorId, number>>, cash = 0): GameState {
   const state = createInitialState();
+  // Explicitly set the balance: a fresh game grants STARTING_CASH, and these
+  // tests assert on exact production deltas.
   state.resources.cash = dec(cash);
   for (const [id, count] of Object.entries(owned) as [GeneratorId, number][]) {
     state.generators[id].owned = count;
@@ -43,6 +45,7 @@ describe('engineTick – production', () => {
 
   it('adds revenue from stockpiled LoC and coffee', () => {
     const state = createInitialState();
+    state.resources.cash = ZERO;
     state.resources.linesOfCode = dec(1000);
     state.resources.coffee = dec(100);
     // 1000 * 0.05 + 100 * 0.35 = 50 + 35 = 85 cash/s

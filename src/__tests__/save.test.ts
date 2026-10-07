@@ -11,6 +11,7 @@ import {
   deserializeState,
   parseSaveBlob,
   createInitialState,
+  STARTING_CASH,
 } from '../game/serialize';
 import {
   saveGameState,
@@ -116,7 +117,9 @@ describe('deserialize – hostile input', () => {
   it('fills defaults for every missing field', () => {
     const minimal = JSON.stringify({ version: CURRENT_SAVE_VERSION, resources: {} });
     const state = deserializeState(minimal);
-    expect(state.resources.cash.toString()).toBe('0');
+    // No generators, no lifetime cash and less than the cheapest generator's
+    // price means this is a fresh start, so it receives the starting grant.
+    expect(state.resources.cash.toString()).toBe(dec(STARTING_CASH).toString());
     expect(state.resources.lifetimeCash.toString()).toBe('0');
     expect(state.upgrades.purchased).toEqual([]);
     expect(state.prestige.permanentUpgrades).toEqual({});
@@ -129,6 +132,9 @@ describe('deserialize – hostile input', () => {
     const json = JSON.stringify({
       version: CURRENT_SAVE_VERSION,
       resources: { cash: '-500', coffee: '-1', linesOfCode: '-2e5' },
+      // Generators owned: this is a broken save, not a fresh start, so the
+      // starting-cash top-up must not mask the clamping.
+      generators: { juniorDev: 3 },
     });
     const state = deserializeState(json);
     expect(state.resources.cash.toString()).toBe('0');
@@ -165,6 +171,7 @@ describe('deserialize – hostile input', () => {
     const json = JSON.stringify({
       version: CURRENT_SAVE_VERSION,
       resources: { cash: 'not-a-number', coffee: 'NaN', linesOfCode: '' },
+      generators: { juniorDev: 2 },
       stats: { playSeconds: 'abc', manualClicks: {} },
     });
     const state = deserializeState(json);
@@ -282,7 +289,9 @@ describe('storage', () => {
     clearSaveData();
     const result = loadGameState();
     expect(result.source).toBe('fresh');
-    expect(result.state.resources.cash.toString()).toBe('0');
+    // A new game grants starting cash so the first generator is affordable.
+    expect(Number(result.state.resources.cash.toString())).toBe(STARTING_CASH);
+    expect(result.state.resources.lifetimeCash.toString()).toBe('0');
   });
 
   it('round-trips through localStorage', () => {

@@ -51,8 +51,33 @@ describe('App – first run', () => {
     expect(screen.getByText('IDEV : ADMIN')).toBeDefined();
   });
 
-  it('shows the empty state before the first purchase', async () => {
+  it('offers the first generator on a brand-new save', async () => {
+    // Regression: a fresh game starts with STARTING_CASH, but the panel gated the
+    // empty state on lifetime cash, so it told a new player to "hire your first
+    // Junior Dev" while rendering no cards at all. The game was unplayable.
     await mount();
+
+    expect(screen.queryByText(/empty repo/i)).toBeNull();
+    const buy = screen.getAllByRole('button', { name: /Buy ×1/ })[0] as HTMLButtonElement;
+    expect(buy.disabled).toBe(false);
+
+    await act(async () => {
+      buy.click();
+    });
+    expect(useGameStore.getState().gameState.generators.juniorDev.owned).toBe(1);
+  });
+
+  it('shows the empty state once the starting cash is spent', async () => {
+    await mount();
+    // setState (not direct mutation) so subscribers re-render.
+    act(() => {
+      useGameStore.setState((s) => ({
+        gameState: {
+          ...s.gameState,
+          resources: { ...s.gameState.resources, cash: dec(3) },
+        },
+      }));
+    });
     expect(screen.getByText(/empty repo/i)).toBeDefined();
   });
 

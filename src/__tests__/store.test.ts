@@ -13,14 +13,16 @@ import { costForBulkPurchase, effectiveCostGrowth, maxAffordable } from '../game
 import { clearSaveData } from '../game/storage';
 import { computeMultipliers } from '../game/multipliers';
 import { dec } from '../game/decimal';
+import { STARTING_CASH } from '../game/serialize';
 
 function store() {
   return useGameStore.getState();
 }
 
-function grantCash(amount: number) {
+/** Set cash to an absolute value, ignoring a fresh game's starting grant. */
+function setCash(amount: number) {
   const state = store();
-  state.gameState.resources.cash = state.gameState.resources.cash.plus(amount);
+  state.gameState.resources.cash = dec(amount);
 }
 
 beforeEach(() => {
@@ -31,7 +33,7 @@ beforeEach(() => {
 describe('buyGenerator', () => {
   it('buys a single unit at base cost', () => {
     const def = requireGenDef('juniorDev');
-    grantCash(100);
+    setCash(100);
 
     const result = store().buyGenerator('juniorDev');
     expect(result.ok).toBe(true);
@@ -49,7 +51,7 @@ describe('buyGenerator', () => {
       store().hardReset();
       const state = store().gameState;
       state.generators[def.id] = { owned: 0, unlocked: true };
-      grantCash(1e9);
+      setCash(1e9);
 
       const result = store().buyGenerator(def.id);
       expect(result.ok, `${def.id} should be purchasable`).toBe(true);
@@ -60,7 +62,7 @@ describe('buyGenerator', () => {
   });
 
   it('scales price with the number already owned', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev');
     store().buyGenerator('juniorDev');
     store().buyGenerator('juniorDev');
@@ -77,7 +79,7 @@ describe('buyGenerator', () => {
   });
 
   it('refuses when cash is insufficient and changes nothing', () => {
-    grantCash(5);
+    setCash(5);
     const result = store().buyGenerator('juniorDev');
     expect(result.ok).toBe(false);
     expect(store().gameState.generators.juniorDev.owned).toBe(0);
@@ -85,14 +87,14 @@ describe('buyGenerator', () => {
   });
 
   it('refuses a locked generator', () => {
-    grantCash(1e12);
+    setCash(1e12);
     const result = store().buyGenerator('k8sCluster');
     expect(result.ok).toBe(false);
     expect(store().gameState.generators.k8sCluster.owned).toBe(0);
   });
 
   it('buys in bulk and charges the geometric sum', () => {
-    grantCash(1e6);
+    setCash(1e6);
     const result = store().buyGenerator('juniorDev', 10);
     expect(result.ok).toBe(true);
     expect(result.count).toBe(10);
@@ -102,7 +104,7 @@ describe('buyGenerator', () => {
   it('never buys more than the cash allows, for every bulk size', () => {
     for (const amount of [1, 10, 100] as const) {
       store().hardReset();
-      grantCash(5000);
+      setCash(5000);
       const result = store().buyGenerator('juniorDev', amount);
       if (result.ok) {
         expect(store().gameState.resources.cash.greaterThanOrEqualTo(dec(0))).toBe(true);
@@ -113,7 +115,7 @@ describe('buyGenerator', () => {
   });
 
   it('MAX buys exactly what the cash affords and never goes negative', () => {
-    grantCash(500_000);
+    setCash(500_000);
     const result = store().buyGenerator('juniorDev', 'max');
 
     expect(result.ok).toBe(true);
@@ -130,18 +132,19 @@ describe('buyGenerator', () => {
   });
 
   it('MAX with no cash is a no-op', () => {
+    setCash(0);
     const result = store().buyGenerator('juniorDev', 'max');
     expect(result.ok).toBe(false);
     expect(store().gameState.generators.juniorDev.owned).toBe(0);
   });
 
   it('applies cost discounts', () => {
-    grantCash(1e9);
+    setCash(1e9);
     store().buyGenerator('juniorDev', 10);
     const cashAfterFullPrice = store().gameState.resources.cash.toString();
 
     store().hardReset();
-    grantCash(1e9);
+    setCash(1e9);
     const state = store().gameState;
     state.upgrades.purchased = ['automatedLinting']; // x0.88 on all costs
     store().buyGenerator('juniorDev', 10);
@@ -150,7 +153,7 @@ describe('buyGenerator', () => {
   });
 
   it('counts a manual click', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev');
     expect(store().gameState.stats.manualClicks).toBe(1);
   });
@@ -158,7 +161,7 @@ describe('buyGenerator', () => {
 
 describe('purchaseUpgrade', () => {
   it('deducts the cost and records the purchase', () => {
-    grantCash(1e6);
+    setCash(1e6);
     const result = store().purchaseUpgrade('codeMaster');
     expect(result.ok).toBe(true);
 
@@ -168,7 +171,7 @@ describe('purchaseUpgrade', () => {
   });
 
   it('cannot be bought twice', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().purchaseUpgrade('codeMaster');
     const second = store().purchaseUpgrade('codeMaster');
     expect(second.ok).toBe(false);
@@ -189,14 +192,14 @@ describe('purchaseUpgrade', () => {
   });
 
   it('enforces generator-count gates', () => {
-    grantCash(1e9);
+    setCash(1e9);
     const result = store().purchaseUpgrade('continuousIntegration'); // needs 2 CI pipelines
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/CI\/CD Pipeline/);
   });
 
   it('enforces lifetimeCash gates', () => {
-    grantCash(1e9);
+    setCash(1e9);
     const result = store().purchaseUpgrade('seniorMentor'); // needs 50k lifetime cash
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/lifetime cash/);
@@ -292,6 +295,7 @@ describe('tick', () => {
   it('advances production and playtime', () => {
     const state = store().gameState;
     state.generators.juniorDev = { owned: 10, unlocked: true };
+    setCash(0);
 
     store().tick(1);
     expect(Number(store().gameState.resources.cash.toString())).toBeCloseTo(2, 6);
@@ -302,6 +306,7 @@ describe('tick', () => {
   it('clamps huge deltas', () => {
     const state = store().gameState;
     state.generators.juniorDev = { owned: 10, unlocked: true };
+    setCash(0);
     store().tick(9999);
     expect(Number(store().gameState.resources.cash.toString())).toBeCloseTo(4, 6);
   });
@@ -326,6 +331,7 @@ describe('catchUp', () => {
   it('credits hidden time and raises an offline report', () => {
     const state = store().gameState;
     state.generators.juniorDev = { owned: 100, unlocked: true };
+    setCash(0);
 
     store().catchUp(60 * 60 * 1000);
     // 20/s * 1800s = 36000
@@ -347,7 +353,7 @@ describe('catchUp', () => {
 
 describe('save / load', () => {
   it('round-trips through the store', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev', 5);
     store().save();
 
@@ -363,7 +369,7 @@ describe('save / load', () => {
   });
 
   it('rejects a corrupt import without destroying the state', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev');
     const result = store().loadFromString('not json at all');
     expect(result.ok).toBe(false);
@@ -371,7 +377,7 @@ describe('save / load', () => {
   });
 
   it('hydrate loads from storage', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev', 3);
     store().save();
 
@@ -381,13 +387,15 @@ describe('save / load', () => {
   });
 
   it('hardReset clears storage and state', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev');
     store().save();
     store().hardReset();
 
     expect(store().gameState.generators.juniorDev.owned).toBe(0);
-    expect(store().gameState.resources.cash.toString()).toBe('0');
+    // hardReset restores a brand-new game, which includes the starting grant.
+    expect(Number(store().gameState.resources.cash.toString())).toBe(STARTING_CASH);
+    expect(store().gameState.resources.lifetimeCash.toString()).toBe('0');
     expect(store().transient.save.lastSavedAt).toBeNull();
   });
 });
@@ -398,7 +406,7 @@ describe('data integrity', () => {
       store().hardReset();
       const state = store().gameState;
       state.generators[def.id] = { owned: 0, unlocked: true };
-      grantCash(1e12);
+      setCash(1e12);
       const result = store().buyGenerator(def.id);
       expect(result.ok, `${def.id} should be purchasable`).toBe(true);
       expect(store().gameState.generators[def.id].owned).toBe(1);
@@ -406,7 +414,7 @@ describe('data integrity', () => {
   });
 
   it('rejects unknown or malformed generator ids without corrupting state', () => {
-    grantCash(1e6);
+    setCash(1e6);
     store().buyGenerator('juniorDev');
     const before = store().gameState.resources.cash.toString();
 
@@ -418,7 +426,7 @@ describe('data integrity', () => {
   it('keeps cash non-negative under repeated MAX buying', () => {
     const state = store().gameState;
     state.generators.juniorDev = { owned: 5, unlocked: true };
-    grantCash(1e7);
+    setCash(1e7);
 
     for (let i = 0; i < 25; i += 1) {
       store().buyGenerator('juniorDev', 'max');
@@ -432,7 +440,7 @@ describe('data integrity', () => {
       store().hardReset();
       const state = store().gameState;
       state.generators[def.id] = { owned: 37, unlocked: true };
-      grantCash(5e7);
+      setCash(5e7);
       store().buyGenerator(def.id, 'max');
       expect(store().gameState.resources.cash.greaterThanOrEqualTo(dec(0))).toBe(true);
     }
@@ -441,7 +449,7 @@ describe('data integrity', () => {
   it('maxAffordable agrees with what MAX actually bought', () => {
     const state = store().gameState;
     state.generators.juniorDev = { owned: 12, unlocked: true };
-    grantCash(80_000);
+    setCash(80_000);
 
     const mult = computeMultipliers(store().gameState);
     const def = requireGenDef('juniorDev');
