@@ -1,0 +1,75 @@
+:root {
+  --bg: #0b0d12;
+  --bg-raised: #12151d;
+  --bg-sunken: #080a0e;
+  --border: #232838;
+  --border-strong: #333a52;
+  --text: #e6e9f2;
+  --text-dim: #98a0b8;
+  --text-faint: #626b85;
+  --accent: #863bff;
+  --accent-soft: rgba(134, 59, 255, 0.16);
+  --accent-line: rgba(134, 59, 255, 0.55);
+  --cash: #f5c451;
+  --loc: #5fd0ff;
+  --coffee: #ff9d6e;
+  --techdebt: #7ef2c1;
+  --danger: #ff5f6d;
+  --success: #52d98b;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 20% -10%, #161b2b 0%, var(--bg) 55%);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.app {
+  min-height: 100%;
+}
