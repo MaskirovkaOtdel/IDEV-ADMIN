@@ -75,14 +75,15 @@ self-accelerates enough that play style barely matters, which is the intent.
 
 ## Deployment
 
-Every green push to `main` deploys to GitHub Pages automatically:
+Every green push to `main` deploys to GitHub Pages automatically. One workflow
+(`.github/workflows/verify-deploy.yml`) does both halves, so a commit gets a
+single check that means "this is good and it is live":
 
-- **CI** (`.github/workflows/ci.yml`) — typecheck, test, build, and a balance
-  simulation on every push and PR. Also runs the simulation so a pacing
-  regression shows up in the log rather than waiting for someone to notice.
-- **Deploy** (`.github/workflows/deploy.yml`) — runs only on `main`, and only
-  after CI passes. Publishes atomically, so visitors see either the old build or
-  the new one, never a partial deploy.
+- **Verify** — typecheck, test, build, plus a balance simulation, on every push
+  and PR. Running the simulation means an economy regression shows up in the log
+  instead of waiting to be noticed.
+- **Deploy** — `main` only, only after verify passes, published with an atomic
+  swap so visitors see the old build or the new one and never a partial deploy.
 
 `vite.config.ts` uses `base: './'`, so the same build works from a sub-path
 (`/IDEV-ADMIN/`) or a root domain. Adding a custom domain later is a DNS change
@@ -90,6 +91,13 @@ plus a `CNAME` file, not a rebuild.
 
 Tag a release (`git tag v0.1.0 && git push --tags`) to mark an Early Access
 milestone. Main stays continuously deployable between tags.
+
+### Pages setup note
+
+Pages **must** be set to **GitHub Actions** under Settings → Pages → Build and
+deployment → Source. Setting it to "Deploy from a branch" publishes the
+repository root instead of `dist/`, which serves the dev `index.html` and renders
+a blank page, and exposes the raw source tree.
 
 `npm run simulate -- --hours 6` extends the horizon; `-- --json` emits
 machine-readable output.
