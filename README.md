@@ -73,6 +73,24 @@ self-accelerates enough that play style barely matters, which is the intent.
 | `npm run simulate` | Balance simulation report |
 | `npm run verify` | typecheck + test + build, the gate for PRs |
 
+## Deployment
+
+Every green push to `main` deploys to GitHub Pages automatically:
+
+- **CI** (`.github/workflows/ci.yml`) — typecheck, test, build, and a balance
+  simulation on every push and PR. Also runs the simulation so a pacing
+  regression shows up in the log rather than waiting for someone to notice.
+- **Deploy** (`.github/workflows/deploy.yml`) — runs only on `main`, and only
+  after CI passes. Publishes atomically, so visitors see either the old build or
+  the new one, never a partial deploy.
+
+`vite.config.ts` uses `base: './'`, so the same build works from a sub-path
+(`/IDEV-ADMIN/`) or a root domain. Adding a custom domain later is a DNS change
+plus a `CNAME` file, not a rebuild.
+
+Tag a release (`git tag v0.1.0 && git push --tags`) to mark an Early Access
+milestone. Main stays continuously deployable between tags.
+
 `npm run simulate -- --hours 6` extends the horizon; `-- --json` emits
 machine-readable output.
 

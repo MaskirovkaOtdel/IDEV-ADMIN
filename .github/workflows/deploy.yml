@@ -1,0 +1,64 @@
+# Deploy to GitHub Pages.
+#
+# Two-phase deploy, which is the pattern GitHub documents:
+#   1. `configure-pages` + `upload-pages-artifact` — stage the artifact
+#   2. `deploy-pages` — atomically swap it live
+#
+# The swap is atomic: visitors see either the old site or the new one, never a
+# half-written deploy.
+#
+# This job only runs after CI passes. Gating deploy on a green build is the
+# whole point — auto-deploy without a gate ships broken commits to players the
+# moment you push them.
+
+name: Deploy to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys race, and never cancel one mid-swap.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build and stage
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only the newest run publishes, so queued commits collapse to the latest.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
