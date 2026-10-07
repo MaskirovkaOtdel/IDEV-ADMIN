@@ -5,6 +5,7 @@
  * shows the payout *before* the player commits, plus what survives and what does
  * not, so the reset is never a surprise.
  */
+import { useState } from 'react';
 import { useGameStore } from '../game/gameStore';
 import { PERM_UPGRADE_DEFS, permUpgradeCost } from '../game/permUpgrades';
 import {
@@ -14,6 +15,7 @@ import {
   runLifetimeCash,
 } from '../game/prestige';
 import { formatDecimal } from '../game/formulas';
+import { SaveManager } from './SaveManager';
 
 export interface PrestigePanelProps {
   onOpenResetModal: () => void;
@@ -26,6 +28,7 @@ export function PrestigePanel({ onOpenResetModal }: PrestigePanelProps) {
   const techDebt = gameState.prestige.techDebt;
   const payout = computeTechDebtGained(gameState);
   const eligible = canPrestige(gameState);
+  const [saveOpen, setSaveOpen] = useState(false);
 
   return (
     <section className="panel">
@@ -108,6 +111,14 @@ export function PrestigePanel({ onOpenResetModal }: PrestigePanelProps) {
           );
         })}
       </div>
+
+      <div className="panel-footer-row">
+        <button type="button" className="btn btn-ghost" onClick={() => setSaveOpen(true)}>
+          Export / import save
+        </button>
+      </div>
+
+      <SaveManager isOpen={saveOpen} onClose={() => setSaveOpen(false)} />
     </section>
   );
 }

@@ -352,3 +352,96 @@ describe('App – offline report', () => {
     expect(screen.queryByText(/Welcome back/i)).toBeNull();
   });
 });
+
+describe('App – save export and import', () => {
+  async function openSaveManager() {
+    seedSave();
+    await mount();
+    await act(async () => {
+      screen.getByRole('button', { name: /Prestige/ }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: /Export \/ import save/ }).click();
+    });
+  }
+
+  it('opens from the prestige panel and shows the current save', async () => {
+    await openSaveManager();
+    expect(screen.getByRole('dialog')).toBeDefined();
+    const area = screen.getByLabelText('Current save data') as HTMLTextAreaElement;
+    expect(area.value.length).toBeGreaterThan(10);
+    expect(screen.getByText(/Progress is stored in this browser only/)).toBeDefined();
+  });
+
+  it('closes without changing state', async () => {
+    await openSaveManager();
+    const ownedBefore = useGameStore.getState().gameState.generators.juniorDev.owned;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Done' }).click();
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(useGameStore.getState().gameState.generators.juniorDev.owned).toBe(ownedBefore);
+  });
+
+  it('imports a pasted save, replacing the current one', async () => {
+    await openSaveManager();
+
+    // Build a save on a "different device": capture one with progress, then
+    // reset this browser's state before pasting it back.
+    const source = useGameStore.getState();
+    source.gameState.resources.cash = dec(500_000);
+    useGameStore.getState().buyGenerator('juniorDev', 12);
+    const expectedOwned = useGameStore.getState().gameState.generators.juniorDev.owned;
+    expect(expectedOwned).toBeGreaterThan(0);
+    const exported = useGameStore.getState().exportSave() as string;
+
+    useGameStore.getState().hardReset();
+    expect(useGameStore.getState().gameState.generators.juniorDev.owned).toBe(0);
+
+    const field = screen.getByLabelText('Save data to import') as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        'value'
+      )?.set;
+      setter?.call(field, exported);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Replace current save/ }).click();
+    });
+
+    expect(useGameStore.getState().gameState.generators.juniorDev.owned).toBe(expectedOwned);
+    expect(screen.getByText('Save imported.')).toBeDefined();
+  });
+
+  it('reports a failed import without corrupting the live save', async () => {
+    await openSaveManager();
+    const ownedBefore = useGameStore.getState().gameState.generators.juniorDev.owned;
+
+    const field = screen.getByLabelText('Save data to import') as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        'value'
+      )?.set;
+      setter?.call(field, 'this is not a save');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Replace current save/ }).click();
+    });
+
+    expect(screen.getByText(/Import failed/)).toBeDefined();
+    expect(useGameStore.getState().gameState.generators.juniorDev.owned).toBe(ownedBefore);
+  });
+
+  it('keeps the import button disabled with an empty field', async () => {
+    await openSaveManager();
+    const button = screen.getByRole('button', { name: /Replace current save/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+});
