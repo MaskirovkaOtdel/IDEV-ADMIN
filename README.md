@@ -89,8 +89,25 @@ single check that means "this is good and it is live":
 (`/IDEV-ADMIN/`) or a root domain. Adding a custom domain later is a DNS change
 plus a `CNAME` file, not a rebuild.
 
-Tag a release (`git tag v0.1.0 && git push --tags`) to mark an Early Access
-milestone. Main stays continuously deployable between tags.
+### Releases
+
+Main deploys continuously; tags mark Early Access milestones. Pushing a `v*`
+tag runs the verify gate and publishes a GitHub Release with generated notes:
+
+```
+git tag -a v0.1.0 -m "Early Access 0.1.0"
+git push origin v0.1.0
+```
+
+A tag containing `-` is marked as a prerelease. A release can never point at a
+commit that does not pass CI, because the release workflow verifies first.
+
+### Dependencies
+
+Dependabot opens weekly PRs for npm and monthly for GitHub Actions. Runtime and
+tooling bumps are grouped separately so framework changes are reviewed
+individually while everything else moves in one pass. Every PR runs the same
+`npm run verify` gate.
 
 ### Pages setup note
 

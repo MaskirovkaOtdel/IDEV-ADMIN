@@ -1,0 +1,45 @@
+# Keeps the dependency tree current.
+#
+# The repo carries a large dep tree for a project this size, and stale
+# transitive deps are where supply-chain surprises come from. Grouped so a
+# weekly run opens one PR for runtime deps and one for tooling, instead of a
+# dozen.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'deps'
+    groups:
+      # Ship-blockers and framework: bump and verify individually, since these
+      # touch React and the build itself.
+      runtime-critical:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - 'zustand'
+          - 'break_infinity.js'
+      # Everything else moves together; the gate is `npm run verify`.
+      tooling:
+        patterns:
+          - '*'
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'ci'
+    groups:
+      actions:
+        patterns:
+          - '*'
