@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { GENERATOR_IDS, RESOURCE_IDS } from './types';
 import { UPGRADE_DEFS } from './upgrades';
-import { permanentGlobalMult, permanentCostMult } from './permUpgrades';
+import { PERM_UPGRADE_DEFS } from './permUpgrades';
 import { ONE } from './decimal';
 
 const RESOURCE_SET = new Set<string>(RESOURCE_IDS);
@@ -41,55 +41,85 @@ function emptyPerGenerator(): Record<GeneratorId, Decimal> {
  * a 12% discount into a 0.12x production penalty.
  */
 export function computeMultipliers(state: GameState): MultiplierSnapshot {
-  const purchased = state.upgrades.purchased;
-  const purchasedSet = new Set(purchased);
-
-  let global = ONE;
-  let revenueMult = ONE;
-  let costDiscount = ONE;
-  let costGrowthDelta = 0;
-  const perResource = emptyPerResource();
-  const perGenerator = emptyPerGenerator();
+  // Both upgrade layers use the same effect kinds and are applied through the
+  // same switch, so a permanent upgrade can never be given a capability the
+  // run-upgrade path does not also support. That is deliberate: the two layers
+  // differ in *cost currency* and *persistence*, not in vocabulary.
+  const runOwned = new Set(state.upgrades.purchased);
+  const snapshot = {
+    global: ONE,
+    revenueMult: ONE,
+    costDiscount: ONE,
+    offlineEfficiency: ONE,
+    costGrowthDelta: 0,
+    perResource: emptyPerResource(),
+    perGenerator: emptyPerGenerator(),
+  };
 
   for (const def of UPGRADE_DEFS) {
-    if (!purchasedSet.has(def.id)) continue;
-    for (const effect of def.effects) {
-      switch (effect.kind) {
-        case 'globalMult':
-          global = global.times(Decimal.fromNumber(effect.value));
-          break;
-        case 'revenueMult':
-          revenueMult = revenueMult.times(Decimal.fromNumber(effect.value));
-          break;
-        case 'costDiscount':
-          costDiscount = costDiscount.times(Decimal.fromNumber(effect.value));
-          break;
-        case 'costGrowthDelta':
-          costGrowthDelta += effect.value;
-          break;
-        case 'resourceMult': {
-          const target = effect.target;
-          // Guard: a generatorMult target must never be looked up as a resource.
-          if (target && RESOURCE_SET.has(target)) {
-            perResource[target as ResourceId] = perResource[target as ResourceId]
-              .times(Decimal.fromNumber(effect.value));
-          }
-          break;
+    if (!runOwned.has(def.id)) continue;
+    applyEffects(def.effects, 1, snapshot);
+  }
+
+  // Permanent upgrades apply once per level owned, so a level-3 legacyCodebase
+  // contributes its effect three times.
+  for (const def of PERM_UPGRADE_DEFS) {
+    const levels = state.prestige.permanentUpgrades[def.id] ?? 0;
+    if (levels <= 0) continue;
+    applyEffects(def.effects, levels, snapshot);
+  }
+
+  return snapshot;
+}
+
+type MutableSnapshot = {
+  global: Decimal;
+  revenueMult: Decimal;
+  costDiscount: Decimal;
+  offlineEfficiency: Decimal;
+  costGrowthDelta: number;
+  perResource: Record<ResourceId, Decimal>;
+  perGenerator: Record<GeneratorId, Decimal>;
+};
+
+/** Apply one definition's effects `times` times into the accumulating snapshot. */
+function applyEffects(effects: readonly { kind: string; target?: string; value: number }[], times: number, acc: MutableSnapshot): void {
+  for (const effect of effects) {
+    switch (effect.kind) {
+      case 'globalMult':
+        acc.global = acc.global.times(Decimal.pow(Decimal.fromNumber(effect.value), times));
+        break;
+      case 'revenueMult':
+        acc.revenueMult = acc.revenueMult.times(Decimal.pow(Decimal.fromNumber(effect.value), times));
+        break;
+      case 'offlineEfficiency':
+        acc.offlineEfficiency = acc.offlineEfficiency.times(
+          Decimal.pow(Decimal.fromNumber(effect.value), times)
+        );
+        break;
+      case 'costDiscount':
+        acc.costDiscount = acc.costDiscount.times(Decimal.pow(Decimal.fromNumber(effect.value), times));
+        break;
+      case 'costGrowthDelta':
+        acc.costGrowthDelta += effect.value * times;
+        break;
+      case 'resourceMult': {
+        const target = effect.target;
+        // Guard: a generatorMult target must never be looked up as a resource.
+        if (target && RESOURCE_SET.has(target)) {
+          acc.perResource[target as ResourceId] = acc.perResource[target as ResourceId]
+            .times(Decimal.pow(Decimal.fromNumber(effect.value), times));
         }
-        case 'generatorMult': {
-          const target = effect.target;
-          if (target && GENERATOR_SET.has(target)) {
-            perGenerator[target as GeneratorId] = perGenerator[target as GeneratorId]
-              .times(Decimal.fromNumber(effect.value));
-          }
-          break;
+        break;
+      }
+      case 'generatorMult': {
+        const target = effect.target;
+        if (target && GENERATOR_SET.has(target)) {
+          acc.perGenerator[target as GeneratorId] = acc.perGenerator[target as GeneratorId]
+            .times(Decimal.pow(Decimal.fromNumber(effect.value), times));
         }
+        break;
       }
     }
   }
-
-  global = global.times(permanentGlobalMult(state));
-  costDiscount = costDiscount.times(permanentCostMult(state));
-
-  return { global, perResource, perGenerator, costDiscount, costGrowthDelta, revenueMult };
 }

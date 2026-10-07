@@ -33,6 +33,7 @@ import { dec, ZERO } from './decimal';
 import { GENERATOR_DEFS } from './generators';
 import { isGeneratorUnlocked } from './conditions';
 import { permUpgradeCost, permUpgradeDef } from './permUpgrades';
+import { STARTING_CASH } from './serialize';
 
 /** Save-schema version written by this build. */
 export const CURRENT_SAVE_VERSION = 1;
@@ -164,7 +165,11 @@ export function resetForPrestige(state: GameState, now: number = Date.now()): Ga
     resources: {
       linesOfCode: ZERO,
       coffee: ZERO,
-      cash: ZERO,
+      // Cash is NOT zeroed. A reset with 0 cash and 0 generators is a dead game:
+      // nothing produces, so there is no way to buy the first generator back.
+      // This grant is the same one a brand-new game receives, which keeps every
+      // post-prestige run playable.
+      cash: dec(STARTING_CASH),
       // lifetimeCash is deliberately carried over: it drives unlocks, upgrade
       // gates and future prestige payouts.
       lifetimeCash: state.resources.lifetimeCash,

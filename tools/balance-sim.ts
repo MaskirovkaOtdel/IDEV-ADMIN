@@ -195,6 +195,59 @@ function tryBuyGenerator(state: GameState): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Prestige-layer spending
+// ---------------------------------------------------------------------------
+
+/** Cheapest next permanent level across the pool. */
+function cheapestPermPrice(state: GameState): number {
+  return PERM_UPGRADE_DEFS.reduce((sum, def) => {
+    const owned = state.prestige.permanentUpgrades[def.id] ?? 0;
+    return Math.min(sum, Number(def.baseCost.toString()) * Math.pow(def.costMultiplier, owned));
+  }, Number.POSITIVE_INFINITY);
+}
+
+/**
+ * Spend banked Tech Debt, cheapest level first, until nothing is affordable.
+ *
+ * Buys in ascending price order rather than pool order: the pool is grouped by
+ * effect kind for readability, so iterating it directly would buy a 500-cost
+ * global multiplier while skipping an affordable 60-cost one.
+ */
+function spendTechDebt(
+  state: GameState,
+  rows: { tier: string; atSeconds: number }[],
+  bought: Set<string>,
+  elapsed: number
+): void {
+  let boughtSomething = true;
+  while (boughtSomething) {
+    boughtSomething = false;
+
+    // Cheapest affordable level, so early Tech Debt goes to the highest-value
+    // purchase available rather than the first one in the list.
+    let best: { def: (typeof PERM_UPGRADE_DEFS)[number]; owned: number; price: number } | null = null;
+    for (const def of PERM_UPGRADE_DEFS) {
+      const owned = state.prestige.permanentUpgrades[def.id] ?? 0;
+      const price = Number(def.baseCost.toString()) * Math.pow(def.costMultiplier, owned);
+      if (price > Number(state.prestige.techDebt.toString())) continue;
+      if (!best || price < best.price) best = { def, owned, price };
+    }
+
+    if (!best) return;
+
+    state.prestige.techDebt = state.prestige.techDebt.minus(dec(best.price));
+    state.prestige.permanentUpgrades[best.def.id] = best.owned + 1;
+    boughtSomething = true;
+
+    const key = `${best.def.id}:${best.owned}`;
+    if (!bought.has(key)) {
+      bought.add(key);
+      rows.push({ tier: `${best.def.name} ×${best.owned + 1}`, atSeconds: elapsed });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Simulation
 // ---------------------------------------------------------------------------
 
@@ -358,37 +411,20 @@ export function simulatePrestigeLadder(profile: Profile, horizonHours: number): 
       for (let i = 0; i < 12; i += 1) if (!tryBuyGenerator(state)) break;
     }
 
-    // Spend Tech Debt on permanent tiers whenever possible, cheapest first.
-    let boughtSomething = true;
-    while (boughtSomething) {
-      boughtSomething = false;
-      for (const def of PERM_UPGRADE_DEFS) {
-        const owned = state.prestige.permanentUpgrades[def.id] ?? 0;
-        const price = Number(def.baseCost.toString()) * Math.pow(def.costMultiplier, owned);
-        if (state.prestige.techDebt.greaterThanOrEqualTo(dec(price))) {
-          state.prestige.techDebt = state.prestige.techDebt.minus(dec(price));
-          state.prestige.permanentUpgrades[def.id] = owned + 1;
-          boughtSomething = true;
-          if (!bought.has(`${def.id}:${owned}`)) {
-            bought.add(`${def.id}:${owned}`);
-            rows.push({ tier: `${def.name} ×${owned + 1}`, atSeconds: elapsed });
-          }
-        }
-      }
-    }
+    spendTechDebt(state, rows, bought, elapsed);
 
     // Reset only when the payout would actually buy a tier. Resetting on a fixed
     // threshold loops forever once that threshold is below the next tier's price:
-    // you would reset every cycle, bank the same 25, and never progress.
+    // you would reset every cycle, bank the same amount, and never progress.
     const payout = computeTechDebtGained(state);
-    const nextTierPrice = PERM_UPGRADE_DEFS.reduce((sum, def) => {
-      const owned = state.prestige.permanentUpgrades[def.id] ?? 0;
-      return Math.min(sum, Number(def.baseCost.toString()) * Math.pow(def.costMultiplier, owned));
-    }, Number.POSITIVE_INFINITY);
-
+    const nextTierPrice = cheapestPermPrice(state);
     const banked = state.prestige.techDebt.plus(payout);
     if (payout.greaterThan(ZERO) && banked.greaterThanOrEqualTo(dec(nextTierPrice))) {
       state = resetForPrestige(state, elapsed * 1000);
+      // The reset moved the baseline and wiped the run, so everything derived
+      // above is stale. Re-buy on the fresh state: the banked debt is now
+      // actually spendable, and the run has to be rebuilt from zero regardless.
+      spendTechDebt(state, rows, bought, elapsed);
     }
   }
 

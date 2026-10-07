@@ -6,7 +6,13 @@
  * credited nothing at all. Now offline time is walked through the real engine.
  */
 import { describe, it, expect } from 'vitest';
-import { applyOfflineProgress, offlineSecondsFor, OFFLINE_EFFICIENCY, MAX_OFFLINE_SECONDS } from '../game/offline';
+import {
+  applyOfflineProgress,
+  offlineSecondsFor,
+  offlineEfficiencyFor,
+  OFFLINE_EFFICIENCY,
+  MAX_OFFLINE_SECONDS,
+} from '../game/offline';
 import { createInitialState } from '../game/serialize';
 import { dec, ZERO } from '../game/decimal';
 import type { GameState } from '../game/types';
@@ -134,5 +140,50 @@ describe('offlineSecondsFor', () => {
     expect(offlineSecondsFor(HOUR)).toBeCloseTo(1800, 3);
     expect(offlineSecondsFor(48 * HOUR)).toBeCloseTo(MAX_OFFLINE_SECONDS * OFFLINE_EFFICIENCY, 3);
     expect(offlineSecondsFor(-1)).toBe(0);
+  });
+
+  it('accepts a caller-supplied efficiency', () => {
+    expect(offlineSecondsFor(HOUR, 1)).toBeCloseTo(3600, 3);
+  });
+});
+
+describe('offline efficiency from permanent upgrades', () => {
+  it('starts at the 50% base', () => {
+    expect(offlineEfficiencyFor(createInitialState())).toBeCloseTo(0.5, 6);
+  });
+
+  it('doubles with one level of On-Call Rotation', () => {
+    const state = withGenerators();
+    state.prestige.permanentUpgrades = { onCallRotation: 1 };
+    expect(offlineEfficiencyFor(state)).toBeCloseTo(1, 6);
+  });
+
+  it('credits more for the same absence once upgraded', () => {
+    const base = withGenerators();
+    const boosted = withGenerators();
+    boosted.prestige.permanentUpgrades = { onCallRotation: 1 };
+
+    const { report: baseReport } = applyOfflineProgress(base, HOUR);
+    const { report: boostedReport } = applyOfflineProgress(boosted, HOUR);
+
+    expect(boostedReport.effectiveSeconds).toBeCloseTo(baseReport.effectiveSeconds * 2, 3);
+    expect(Number(boostedReport.gained.cash?.toString())).toBeCloseTo(72_000, 0);
+  });
+
+  it('never exceeds 100%, however many levels are stacked', () => {
+    const state = withGenerators();
+    state.prestige.permanentUpgrades = { onCallRotation: 5 };
+    expect(offlineEfficiencyFor(state)).toBe(1);
+
+    const { report } = applyOfflineProgress(state, 8 * HOUR);
+    // 20 cash/s * 28800s at 100% = 576000
+    expect(Number(report.gained.cash?.toString())).toBeCloseTo(576_000, -2);
+  });
+
+  it('reports the efficiency it used', () => {
+    const state = withGenerators();
+    state.prestige.permanentUpgrades = { onCallRotation: 1 };
+    const { report } = applyOfflineProgress(state, HOUR);
+    expect(report.efficiency).toBeCloseTo(1, 6);
   });
 });

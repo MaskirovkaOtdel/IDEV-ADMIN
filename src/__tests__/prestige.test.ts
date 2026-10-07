@@ -20,8 +20,11 @@ import {
 } from '../game/prestige';
 import { permanentGlobalMult, permUpgradeCost, PERM_UPGRADE_DEFS } from '../game/permUpgrades';
 import { computeMultipliers } from '../game/multipliers';
+import { engineTick } from '../game/engine';
 import { createInitialState } from '../game/serialize';
+import { GENERATOR_DEFS } from '../game/generators';
 import { dec, isNaNDecimal, ZERO } from '../game/decimal';
+import { STARTING_CASH } from '../game/serialize';
 import type { GameState, PermUpgradeDef } from '../game/types';
 
 function withLifetimeCash(cash: number | string): GameState {
@@ -136,7 +139,9 @@ describe('resetForPrestige', () => {
       expect(gen.owned).toBe(0);
     }
     expect(after.upgrades.purchased).toEqual([]);
-    expect(after.resources.cash.toString()).toBe('0');
+    // LoC and coffee are wiped; cash is reset to the starting grant rather than
+    // zero, because a run with nothing to spend can never begin.
+    expect(Number(after.resources.cash.toString())).toBe(STARTING_CASH);
     expect(after.resources.linesOfCode.toString()).toBe('0');
     expect(after.resources.coffee.toString()).toBe('0');
     expect(after.stats.playSeconds).toBe(0);
@@ -269,6 +274,56 @@ describe('resetForPrestige — re-claim regression', () => {
 
   it('canPrestige is false immediately after a reset', () => {
     expect(canPrestige(resetForPrestige(richState()))).toBe(false);
+  });
+
+  it('leaves the player able to start a new run', () => {
+    // Regression: a reset zeroed cash AND generators. With nothing owned and
+    // nothing to spend, no production was possible, so the next run could never
+    // begin and the game was permanently dead. The balance simulation's
+    // prestige ladder surfaced this -- it stalled after exactly one reset.
+    const after = resetForPrestige(richState());
+    const cheapest = GENERATOR_DEFS.reduce((min, d) =>
+      d.baseCost.lessThan(min.baseCost) ? d : min
+    );
+
+    expect(after.resources.cash.greaterThanOrEqualTo(cheapest.baseCost)).toBe(true);
+    expect(Object.values(after.generators).every((g) => g.owned === 0)).toBe(true);
+  });
+
+  it('gives back the same starting grant a new game receives', () => {
+    const after = resetForPrestige(richState());
+    expect(after.resources.cash.toString()).toBe(createInitialState().resources.cash.toString());
+  });
+
+  it('resumes production after a reset, so the next payout is reachable', () => {
+    const state = resetForPrestige(richState());
+    state.generators.juniorDev = { owned: 20, unlocked: true };
+
+    // 20 juniors at 0.2/s is 4/s, so ~2000s clears the 1e3 unbanked floor the
+    // Tech Debt curve needs before it pays anything at all.
+    for (let s = 0; s < 2000; s += 1) engineTick(state, 1, s * 1000);
+
+    expect(state.resources.cash.greaterThan(ZERO)).toBe(true);
+    expect(computeTechDebtGained(state).greaterThan(ZERO)).toBe(true);
+  });
+
+  it('can chain five prestiges without any of them stalling', () => {
+    let state = richState();
+    const cheapest = GENERATOR_DEFS.reduce((min, d) =>
+      d.baseCost.lessThan(min.baseCost) ? d : min
+    );
+
+    for (let run = 0; run < 5; run += 1) {
+      state = resetForPrestige(state);
+
+      // Every run must be able to buy back in.
+      expect(state.resources.cash.greaterThanOrEqualTo(cheapest.baseCost)).toBe(true);
+      state.generators[cheapest.id] = { owned: 20, unlocked: true };
+
+      for (let s = 0; s < 600; s += 1) engineTick(state, 1, s * 1000);
+
+      expect(computeTechDebtGained(state).greaterThan(ZERO)).toBe(true);
+    }
   });
 });
 

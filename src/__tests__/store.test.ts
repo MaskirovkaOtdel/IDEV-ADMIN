@@ -255,7 +255,8 @@ describe('performPrestige', () => {
     const after = store().gameState;
     expect(after.generators.juniorDev.owned).toBe(0);
     expect(after.upgrades.purchased).toEqual([]);
-    expect(after.resources.cash.toString()).toBe('0');
+    // Cash resets to the starting grant, not zero, so the next run is playable.
+    expect(Number(after.resources.cash.toString())).toBe(STARTING_CASH);
     expect(Number(after.resources.lifetimeCash.toString())).toBe(1e9);
     expect(after.prestige.techDebt.greaterThan(0)).toBe(true);
     expect(after.stats.prestigeCount).toBe(1);

@@ -76,6 +76,8 @@ export interface MultiplierSnapshot {
   costGrowthDelta: number;
   /** multiplicative factor applied to revenue-per-unit (LoC/coffee -> cash) */
   revenueMult: Decimal;
+  /** multiplicative factor applied to offline efficiency */
+  offlineEfficiency: Decimal;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +183,9 @@ export type UpgradeEffectKind =
   | 'generatorMult'
   | 'revenueMult'
   | 'costDiscount'
-  | 'costGrowthDelta';
+  | 'costGrowthDelta'
+  /** Multiplies offline efficiency (1.5 = offline runs at 75% instead of 50%). */
+  | 'offlineEfficiency';
 
 export interface UpgradeRequirement {
   generatorId?: GeneratorId;
@@ -225,10 +229,15 @@ export interface PermUpgradeDef {
   baseCost: Decimal;
   /** every repeat purchase multiplies the cost by this factor. */
   costMultiplier: number;
-  /** global production factor granted per purchase (1.25 = +25%). */
-  globalMult: number;
-  /** generator cost factor granted per purchase (0.9 = 10% cheaper). */
-  costMult?: number;
+  /**
+   * Effects granted per purchase. Uses the same kinds as run upgrades, so the
+   * permanent layer can target generators and resources rather than only
+   * nudging a single global number — which is what makes repeated prestiges
+   * feel like different runs rather than the same one with a bigger number.
+   */
+  effects: UpgradeEffect[];
+  /** Grouping used by the UI. */
+  group?: 'production' | 'economy' | 'convenience';
 }
 
 // ---------------------------------------------------------------------------
@@ -268,8 +277,10 @@ export interface OfflineReport {
   elapsedSeconds: number;
   /** elapsed after the 8h cap, before efficiency */
   cappedSeconds: number;
-  /** capped * OFFLINE_EFFICIENCY */
+  /** capped * the efficiency that was in force (0.5 base, raised by perm upgrades) */
   effectiveSeconds: number;
+  /** the efficiency used, so the UI never has to recompute or guess it */
+  efficiency: number;
   /** resources actually credited */
   gained: Partial<Record<ResourceId, Decimal>>;
   /** true when nothing was credited (too short an absence, or nothing owned) */

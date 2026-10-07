@@ -7,7 +7,7 @@
  */
 import { useGameStore } from '../game/gameStore';
 import { formatDecimal, formatDuration } from '../game/formulas';
-import { OFFLINE_EFFICIENCY } from '../game/offline';
+import { BASE_OFFLINE_EFFICIENCY } from '../game/offline';
 import { RESOURCE_LABELS } from '../game/types';
 
 const RESOURCE_ORDER = ['cash', 'linesOfCode', 'coffee'] as const;
@@ -33,8 +33,11 @@ export function OfflineReportModal() {
             )}
           </p>
           <p>
-            Credited at {Math.round(OFFLINE_EFFICIENCY * 100)}% efficiency —{' '}
+            Credited at {Math.round(report.efficiency * 100)}% efficiency —{' '}
             <strong>{formatDuration(report.effectiveSeconds)}</strong> of production.
+            {report.efficiency > BASE_OFFLINE_EFFICIENCY && (
+              <> (raised from {Math.round(BASE_OFFLINE_EFFICIENCY * 100)}% by permanent upgrades.)</>
+            )}
           </p>
 
           <ul className="offline-gains">

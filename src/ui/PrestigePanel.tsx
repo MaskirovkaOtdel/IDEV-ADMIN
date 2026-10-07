@@ -111,6 +111,10 @@ export function PrestigePanel({ onOpenResetModal }: PrestigePanelProps) {
           );
         })}
       </div>
+      <p className="panel-note">
+        Every permanent upgrade is repeatable. Cost scales by its own multiplier per level, so
+        the cheapest tier stays worth buying between prestiges.
+      </p>
 
       <div className="panel-footer-row">
         <button type="button" className="btn btn-ghost" onClick={() => setSaveOpen(true)}>
