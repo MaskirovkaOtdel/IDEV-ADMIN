@@ -45,7 +45,14 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # `enablement: true` lets this step enable Pages itself if it is not
+      # already on, using the GITHUB_TOKEN's `pages: write` scope. Without it the
+      # step fails with "Get Pages site failed ... Not Found" on a repo where
+      # Pages has never been enabled, which is exactly the first-deploy case.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
