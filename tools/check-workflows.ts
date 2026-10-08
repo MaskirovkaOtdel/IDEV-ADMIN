@@ -30,11 +30,15 @@
  *   4. `release.yml` in particular is a *tag-only* workflow. This is the check
  *      that would have caught the original symptom most directly: a release
  *      workflow that fires on branch pushes is misconfigured by definition.
+ *   5. `.github/dependabot.yml` parses and covers both ecosystems. It fails the
+ *      same way a workflow does, only quieter: a malformed entry makes
+ *      Dependabot stop opening PRs, and silence there is indistinguishable
+ *      from having nothing to update.
  *
  * USAGE
  *   npm run check:workflows
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { parseDocument } from 'yaml';
 
@@ -61,6 +65,67 @@ const TRIGGER_EXPECTATIONS: Record<string, { tagOnly: boolean }> = {
 
 /** Workflows that are allowed to omit `permissions` because they write nothing. */
 const PERMISSIONS_OPTIONAL = new Set<string>();
+
+/**
+ * Dependabot config lives outside the workflows directory but fails the same way:
+ * a malformed entry makes Dependabot stop opening PRs, and the only symptom is
+ * the absence of updates -- which looks identical to "nothing needed updating".
+ * It is checked here for the same reason the workflows are.
+ */
+const DEPENDABOT_PATH = join(REPO_ROOT, '.github', 'dependabot.yml');
+
+/** Ecosystems this repo actually has a lockfile for. */
+const EXPECTED_ECOSYSTEMS = ['npm', 'github-actions'];
+
+function checkDependabot(): Failure[] {
+  const failures: Failure[] = [];
+  const name = '.github/dependabot.yml';
+
+  if (!existsSync(DEPENDABOT_PATH)) {
+    return [{ file: name, message: 'missing; dependency updates would never be proposed' }];
+  }
+
+  const doc = parseDocument(readFileSync(DEPENDABOT_PATH, 'utf8'));
+  if (doc.errors.length > 0) {
+    for (const err of doc.errors) {
+      failures.push({ file: name, message: `YAML syntax: ${err.message.split('\n')[0]}` });
+    }
+    return failures;
+  }
+
+  const config = doc.toJS() as {
+    version?: unknown;
+    updates?: { 'package-ecosystem'?: string; directory?: string; schedule?: { interval?: string } }[];
+  };
+
+  if (config.version !== 2) {
+    failures.push({ file: name, message: `expected \`version: 2\`, got ${JSON.stringify(config.version)}` });
+  }
+
+  const updates = Array.isArray(config.updates) ? config.updates : [];
+  if (updates.length === 0) {
+    failures.push({ file: name, message: 'no `updates` entries; Dependabot would do nothing' });
+    return failures;
+  }
+
+  for (const ecosystem of EXPECTED_ECOSYSTEMS) {
+    if (!updates.some((u) => u['package-ecosystem'] === ecosystem)) {
+      failures.push({ file: name, message: `no \`updates\` entry for the ${ecosystem} ecosystem` });
+    }
+  }
+
+  for (const update of updates) {
+    const label = update['package-ecosystem'] ?? '(unnamed)';
+    if (!update.schedule?.interval) {
+      failures.push({ file: name, message: `${label}: missing \`schedule.interval\`` });
+    }
+    if (!update.directory) {
+      failures.push({ file: name, message: `${label}: missing \`directory\`` });
+    }
+  }
+
+  return failures;
+}
 
 function listWorkflowFiles(): string[] {
   let entries: string[];
@@ -166,6 +231,14 @@ function main(): void {
     }
   }
 
+  const depFailures = checkDependabot();
+  if (depFailures.length === 0) {
+    console.log('  ok  .github/dependabot.yml');
+  } else {
+    failures.push(...depFailures);
+    console.log('FAIL  .github/dependabot.yml');
+  }
+
   if (failures.length > 0) {
     console.error(`\n${failures.length} workflow problem(s):`);
     for (const f of failures) {
@@ -173,11 +246,13 @@ function main(): void {
     }
     console.error('\nAn unparseable workflow is worse than a failing one: it runs zero');
     console.error('steps and can silently fall back to triggering on every push.');
+    console.error('A malformed dependabot.yml is the same class of problem: it just');
+    console.error('stops proposing updates, which reads as "nothing needed updating".');
     process.exitCode = 1;
     return;
   }
 
-  console.log(`\n${files.length} workflow(s) parse and declare the expected shape.`);
+  console.log(`\n${files.length} workflow(s) and dependabot.yml parse and declare the expected shape.`);
 }
 
 main();

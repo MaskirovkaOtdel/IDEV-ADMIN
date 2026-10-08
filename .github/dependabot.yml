@@ -17,6 +17,13 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: 'deps'
+    # TypeScript majors are deliberate, not routine. A new compiler major can
+    # pass `tsc` and still change emit, lib types, or inference in ways the
+    # test suite never notices -- and this project has no runtime type checking
+    # to catch it. Minor and patch updates still arrive automatically.
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
     groups:
       # Ship-blockers and framework: bump and verify individually, since these
       # touch React and the build itself.
@@ -39,6 +46,13 @@ updates:
       interval: monthly
     commit-message:
       prefix: 'ci'
+    ignore:
+      # Third-party actions pinned to a SHA must not be bumped automatically:
+      # the release workflow is the only step holding contents: write, so a
+      # repoint has to be reviewed rather than merged blind. Major bumps of the
+      # first-party actions are fine -- they are versioned with the runner.
+      - dependency-name: softprops/action-gh-release
+        update-types: ['version-update:semver-major']
     groups:
       actions:
         patterns:
