@@ -111,6 +111,27 @@ commit that does not pass CI, because the release workflow verifies first.
 Tags are created by hand on purpose: they name a milestone and record which
 commit it was cut from, which is not something a CI run should decide.
 
+The **annotated tag message becomes the release body**, so write it for someone
+reading the releases page. Generated notes are off because GitHub only
+summarises merged pull requests, and this repo ships by pushing to `main`.
+
+### Versioning
+
+The bump is decided by whether an existing save stays valid, not by how
+important the change feels. `0.1.x` is the patch series; `0.2.0` is the next
+milestone.
+
+| Change | Bump |
+|---|---|
+| Bug fix, no effect on saved state | `0.1.1` |
+| New upgrade or generator tier | `0.2.0` |
+| Cost, rate, or Tech Debt rebalance | `0.2.0` |
+| Any `CURRENT_SAVE_VERSION` bump | `0.2.0` — always |
+| Typo, CI config, docs | no tag |
+
+Release version and save-schema version are tracked separately, so a safe patch
+release stays expressible. CONTRIBUTING.md has the reasoning.
+
 `npm run check:workflows` is in the verify gate because a workflow with a YAML
 syntax error is worse than a failing one. GitHub cannot read any field in it, so
 it runs zero steps and its tag-only trigger silently degrades to firing on every

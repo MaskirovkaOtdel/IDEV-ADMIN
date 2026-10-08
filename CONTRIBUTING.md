@@ -64,6 +64,58 @@ If you touch the economy, add or update a test in `src/__tests__/`. The suite is
 
 `src/game/` holds no React imports. Keep it that way: the engine must stay testable in isolation and reusable outside the UI.
 
+## Versioning and releases
+
+A tag marks **a point in history a player should update to**, not every commit.
+Most commits in this repo are CI, docs, and bug fixes that no player needs a
+version for, so tagging them would only dilute the numbers.
+
+The axis that decides the bump is **whether an existing save stays valid**, not
+how important the change feels.
+
+| Change | Bump | Reason |
+|---|---|---|
+| Bug fix with no effect on saved state | `0.1.1` | Existing saves load unchanged |
+| New permanent upgrade, new generator tier | `0.2.0` | Progress now means something different |
+| Cost, rate, or Tech Debt rebalance | `0.2.0` | Old progress is relatively wrong after it |
+| Any `CURRENT_SAVE_VERSION` bump | `0.2.0` | **Always.** This is the hard line |
+| Typo, CI config, docs | none | Not a release |
+
+So `0.1.x` is the patch series and `0.2.0` is the next milestone. A hotfix
+takes `0.1.1`, not `0.2.0`, even when it fixes something serious — the number
+is a map of the game's shape, and noise there costs more than it buys.
+
+### Two independent versions
+
+These move separately and should stay separate:
+
+- **Release version** — `package.json`, the `v*` tag, the sidebar subtitle.
+- **Save schema** — `CURRENT_SAVE_VERSION` in `src/game/prestige.ts`.
+
+Only the second one can invalidate someone's progress. Keeping them
+independent is what makes a safe patch release expressible: ship `0.1.1`
+through `0.1.9` with the schema untouched at `1`, then bump the schema *and*
+the minor together. If they were one number, every schema change would look
+like a release and "just a patch" would stop being a guarantee.
+
+### Cutting a release
+
+```
+git tag -a v0.1.1 -m "Short player-facing summary
+
+Detail on what changed and why it matters."
+git push origin v0.1.1
+```
+
+The annotated tag message becomes the release body, so write it for someone
+reading the releases page — not as a commit message. The workflow fails if the
+tag has no message rather than publishing an empty release. Bump
+`package.json` in the same commit so the two never drift.
+
+Generated notes are off: this repo ships by pushing to `main`, and GitHub only
+summarises merged pull requests, so auto-notes listed a Dependabot PR and none
+of the actual fixes.
+
 ## Balance changes
 
 The economy is tuned against a target of roughly 45–60 minutes to the first meaningful prestige. If you change generator costs, production rates, upgrade effects, or the Tech Debt curve, run the simulation and report the numbers before and after:

@@ -40,6 +40,33 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
+      # Lift the annotated tag message so it can be the release body. Reading it
+      # here rather than in the release step means a tag with no message fails
+      # loudly at the start, instead of silently publishing an empty release.
+      - name: Read tag message
+        id: tag-message
+        run: |
+          set -euo pipefail
+          message="$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' | head -c 60000)"
+          if [ -z "${message//[[:space:]]/}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} has no annotated message."
+            echo "Create it with: git tag -a ${GITHUB_REF_NAME} -m \"...\""
+            exit 1
+          fi
+          {
+            echo "message<<TAG_MESSAGE_EOF"
+            printf '%s' "$message"
+            echo
+            echo "TAG_MESSAGE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # The annotated tag message becomes the release body.
+      #
+      # generate_release_notes only summarises merged pull requests, and this
+      # repo ships by pushing to main. That produced a release whose only listed
+      # change was a Dependabot PR, while every actual fix went unmentioned. The
+      # tag message is written by a human who knows what matters to a player, so
+      # it is the better source -- see the versioning notes in CONTRIBUTING.md.
       - name: Create GitHub Release
         # Pinned to a SHA, not the floating `v2` major tag. This is the only
         # third-party action in the repo and the only step holding `contents:
@@ -48,7 +75,10 @@ jobs:
         # SHA and opens a PR when a newer release lands.
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          generate_release_notes: true
+          body: ${{ steps.tag-message.outputs.message }}
+          # Off deliberately: see above. The compare link still appears at the
+          # bottom of the body via tag_name, and the full history is one click.
+          generate_release_notes: false
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false

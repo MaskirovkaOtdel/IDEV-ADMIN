@@ -229,6 +229,38 @@ function checkFile(file: string, expectations: { tagOnly: boolean } | undefined)
     }
   }
 
+  // The release body comes from the annotated tag message, so a release step
+  // that still relies on generated notes is a configuration that will produce
+  // the near-empty changelog this replaced.
+  if (file === 'release.yml') {
+    const steps = (Object.values(shape.jobs ?? {})[0]?.steps ?? []) as {
+      with?: { 'generate_release_notes'?: unknown; body?: unknown };
+    }[];
+    const releaseStep = steps.find((s) => s.with?.body !== undefined);
+    if (releaseStep === undefined) {
+      failures.push({
+        file,
+        message: 'no release step sets `body`; the release would fall back to generated notes, which are near-empty for a repo that pushes to main',
+      });
+    } else {
+      const body = String(releaseStep.with.body);
+      if (!body.includes('tag-message')) {
+        failures.push({
+          file,
+          message: `release body does not come from the tag message (got ${body})`,
+        });
+      }
+      // Generated notes and a tag-message body cannot both apply; if notes are
+      // on, they replace the body and the hand-written summary is lost.
+      if (releaseStep.with?.generate_release_notes === true) {
+        failures.push({
+          file,
+          message: 'generate_release_notes is true alongside a tag-message body; generated notes would replace it',
+        });
+      }
+    }
+  }
+
   // Node must be pinned to the one version the repo declares.
   const declared = declaredNodeVersion();
   if (declared !== null) {
