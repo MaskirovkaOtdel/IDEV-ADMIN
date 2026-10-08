@@ -4,6 +4,9 @@
 # transitive deps are where supply-chain surprises come from. Grouped so a
 # weekly run opens one PR for runtime deps and one for tooling, instead of a
 # dozen.
+#
+# npm runs weekly (Mondays); GitHub Actions runs monthly, since first-party
+# actions move in lockstep with the runner and third-party ones are pinned.
 
 version: 2
 
