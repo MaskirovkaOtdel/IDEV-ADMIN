@@ -13,6 +13,9 @@ import {
   computeTechDebtGained,
   lifetimeCashForTechDebt,
   runLifetimeCash,
+  TECH_DEBT_EXPONENT,
+  TECH_DEBT_FLOOR_LOG,
+  TECH_DEBT_SCALE,
 } from '../game/prestige';
 import { formatDecimal } from '../game/formulas';
 import { SaveManager } from './SaveManager';
@@ -34,8 +37,9 @@ export function PrestigePanel({ onOpenResetModal }: PrestigePanelProps) {
     <section className="panel">
       <div className="panel-header">
         <h2>Prestige</h2>
-        <span className="panel-note">
-          Tech Debt formula: ⌊(log₁₀(unbanked cash) − 3)^1.6 × 6⌋
+        <span className="panel-note" data-testid="prestige-formula">
+          Tech Debt formula: ⌊(log₁₀(unbanked cash) − {TECH_DEBT_FLOOR_LOG})^{TECH_DEBT_EXPONENT} ×{' '}
+          {TECH_DEBT_SCALE}⌋
         </span>
       </div>
 

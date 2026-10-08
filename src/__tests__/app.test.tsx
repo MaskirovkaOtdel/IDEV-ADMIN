@@ -13,6 +13,11 @@ import { render, screen, act, cleanup } from '@testing-library/react';
 import App from '../App';
 import { useGameStore } from '../game/gameStore';
 import { clearSaveData, KEY_CURRENT } from '../game/storage';
+import {
+  TECH_DEBT_EXPONENT,
+  TECH_DEBT_FLOOR_LOG,
+  TECH_DEBT_SCALE,
+} from '../game/prestige';
 import { dec } from '../game/decimal';
 import { saveGameState } from '../game/storage';
 import { createInitialState } from '../game/serialize';
@@ -34,6 +39,13 @@ async function mount(settleMs = 250) {
     await new Promise((resolve) => setTimeout(resolve, settleMs));
   });
   return result;
+}
+
+/** Switch to a tab by its nav button, which carries both label and hint text. */
+async function clickTab(name: string) {
+  await act(async () => {
+    screen.getByRole('button', { name: new RegExp(name, 'i') }).click();
+  });
 }
 
 beforeEach(() => {
@@ -295,6 +307,35 @@ describe('App – prestige flow', () => {
     const after = useGameStore.getState().gameState.prestige;
     expect(after.techDebt.lessThan(before)).toBe(true);
     expect(after.permanentUpgrades.refactoringGrant).toBe(1);
+  });
+});
+
+describe('App – prestige formula is not a hardcoded literal', () => {
+  it('renders the exponent and scale the payout actually uses', async () => {
+    // The panel used to display "^1.6 × 6" as a hand-written string while the
+    // engine paid out on "^4 × 0.215". The numbers on screen did not match the
+    // numbers players earned, and nothing failed -- the string was just stale.
+    // Deriving it from the constants means a future retune cannot drift again.
+    await mount();
+    await clickTab('Prestige');
+
+    const note = screen.getByTestId('prestige-formula').textContent ?? '';
+
+    expect(note).toContain(`^${TECH_DEBT_EXPONENT}`);
+    expect(note).toContain(String(TECH_DEBT_SCALE));
+    expect(note).toContain(`− ${TECH_DEBT_FLOOR_LOG}`);
+  });
+
+  it('matches the constants rather than a remembered value', async () => {
+    await mount();
+    await clickTab('Prestige');
+    const note = screen.getByTestId('prestige-formula').textContent ?? '';
+
+    // Assert against the live constants, so changing them updates this test's
+    // expectation too. The failure mode being guarded is a stale literal, and a
+    // hardcoded expected string would reintroduce exactly that.
+    expect(note).not.toContain('^1.6');
+    expect(note).not.toContain('× 6⌋');
   });
 });
 
