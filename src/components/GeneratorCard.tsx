@@ -16,9 +16,20 @@ import { usePulse } from '../game/useFlash';
 
 export interface GeneratorCardProps {
   generatorId: GeneratorId;
+  /**
+   * True for a moment after this generator becomes available, so the arrival
+   * animation plays.
+   *
+   * Passed in rather than detected here on purpose. This card only renders for
+   * unlocked generators, so its own `unlocked` flag is true from the moment it
+   * mounts and never changes afterwards -- a self-contained watcher can never
+   * observe the transition. GeneratorsPanel owns the previous unlocked set, which
+   * is the only place that can tell a fresh arrival from a restored save.
+   */
+  justArrived?: boolean;
 }
 
-export function GeneratorCard({ generatorId }: GeneratorCardProps) {
+export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCardProps) {
   const def = requireGenDef(generatorId);
   const [amount, setAmount] = useState<BuyAmount>(1);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,11 +58,6 @@ export function GeneratorCard({ generatorId }: GeneratorCardProps) {
   // without the card subscribing to its own click handler. `unlocked` is the
   // generator appearing, which is the moment the game pays the player.
   const bought = usePulse(owned);
-  // Generators arrive already-unlocked, so the card mounts rather than
-  // transitioning. Reading the flag through the store (rather than at module
-  // scope) keeps this correct if a save is hydrated to a mid-game state.
-  const unlockedFlag = useGameStore((s) => s.gameState.generators[generatorId]?.unlocked === true);
-  const justUnlocked = usePulse(unlockedFlag, 900);
 
   // The meter shows live output. It is scaled against the strongest generator on
   // screen so the longest bar means "your biggest producer" rather than an
@@ -71,7 +77,7 @@ export function GeneratorCard({ generatorId }: GeneratorCardProps) {
     <article
       className={`card generator-card ${affordable ? 'is-affordable' : ''} ${
         bought ? 'just-bought' : ''
-      } ${justUnlocked ? 'just-unlocked' : ''}`}
+      } ${justArrived ? 'just-unlocked' : ''}`}
     >
       <header className="card-header">
         <span className="card-icon" aria-hidden="true">

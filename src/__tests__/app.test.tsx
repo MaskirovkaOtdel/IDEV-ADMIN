@@ -310,6 +310,63 @@ describe('App – prestige flow', () => {
   });
 });
 
+describe('App – generator arrival animation', () => {
+  // The v0.3.0 arrival animation shipped as dead code. GeneratorCard watched its
+  // own `unlocked` flag, but GeneratorsPanel only renders unlocked generators, so
+  // the flag was true from mount and never changed. A change-from-false watcher
+  // sees only its first value, so the effect could not fire.
+  //
+  // Both directions are asserted: a generator unlocking mid-session animates,
+  // and loading a save with generators already unlocked does not -- otherwise
+  // every load would replay six arrival animations.
+
+  const arrivalCards = () =>
+    [...document.querySelectorAll('.generator-card.just-unlocked')].map((c) =>
+      c.querySelector('.card-title')?.textContent
+    );
+
+  it('animates a generator that unlocks during play', async () => {
+    await mount();
+    expect(arrivalCards()).toHaveLength(0);
+
+    // Senior Dev unlocks at 400 lifetime cash.
+    await act(async () => {
+      const s = useGameStore.getState();
+      useGameStore.setState({
+        gameState: {
+          ...s.gameState,
+          resources: { ...s.gameState.resources, lifetimeCash: dec(1000) },
+        },
+      });
+      await new Promise((r) => setTimeout(r, 250));
+    });
+
+    const arrived = arrivalCards();
+    expect(arrived.length).toBeGreaterThan(0);
+    expect(arrived).toContain('Senior Dev');
+  });
+
+  it('does not animate generators restored from an existing save', async () => {
+    // Seed a mid-game save before mount, the way a returning player arrives.
+    clearSaveData();
+    const saved = createInitialState();
+    saved.resources.lifetimeCash = dec(50_000);
+    saved.generators.seniorDev = { owned: 4, unlocked: true };
+    saved.generators.codeReview = { owned: 2, unlocked: true };
+    // Reset the in-memory store FIRST: hardReset() clears storage too, so writing
+    // the save before it would be undone.
+    useGameStore.getState().hardReset();
+    saveGameState(saved);
+
+    await mount();
+
+    // Generators are present...
+    expect(document.querySelectorAll('.generator-card').length).toBeGreaterThan(1);
+    // ...but none of them are announcing an arrival.
+    expect(arrivalCards()).toHaveLength(0);
+  });
+});
+
 describe('App – card states are visually distinct', () => {
   it('marks unaffordable and out-of-reach upgrades differently', async () => {
     // The Prestige panel used to render every unaffordable upgrade with the same
