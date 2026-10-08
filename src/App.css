@@ -327,6 +327,130 @@
   border-style: dashed;
 }
 
+/* --- event layer: CRT punctuation -------------------------------------------
+ *
+ * Punctuation, not costume. These effects fire on events -- a purchase landing,
+ * a generator unlocking, a prestige burning the run -- and never sit ambient.
+ * A permanent scanline overlay turns the interface into retro pastiche and
+ * buries the numbers the player actually came for. An event-triggered flash
+ * reads as responsiveness, which is what a 10Hz loop should feel like.
+ *
+ * Every rule here is suppressed under prefers-reduced-motion below. */
+
+/* Purchase: a quick phosphor bloom on the card that was bought. */
+@keyframes flash-bought {
+  0% {
+    box-shadow: 0 0 0 0 rgba(134, 59, 255, 0.55);
+    border-color: var(--accent-action);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(134, 59, 255, 0);
+    border-color: var(--state-affordable-line);
+  }
+}
+
+.card.just-bought {
+  animation: flash-bought var(--motion-base) var(--ease-out);
+}
+
+/* Unlock: a generator arriving is the moment the game pays the player, so it
+   gets the loudest treatment in the app. Slides in from the left edge it would
+   have appeared from. */
+@keyframes unlock-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-12px);
+    box-shadow: -14px 0 0 0 rgba(134, 59, 255, 0.5);
+  }
+  60% {
+    box-shadow: -14px 0 0 0 rgba(134, 59, 255, 0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    box-shadow: var(--elev-2), 0 0 0 1px var(--state-affordable-soft);
+  }
+}
+
+.card.just-unlocked {
+  animation: unlock-in 620ms var(--ease-out);
+  border-color: var(--state-affordable-line);
+}
+
+/* Prestige burn: the run is being destroyed, so the whole workspace gets one
+   sweep. Applied to the workspace rather than a card because prestige is not a
+   card event -- it is the loss of everything on screen. */
+@keyframes burn-sweep {
+  0% {
+    position: relative;
+  }
+  30% {
+    background: rgba(255, 95, 109, 0.16);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.workspace.is-burning {
+  animation: burn-sweep 700ms var(--ease-out);
+}
+
+/* Production ticker: a hairline under each generator card showing live output.
+   Width is driven by the real rate, so a stronger generator draws a longer bar
+   and the card's worth is legible without reading the number. */
+.gen-meter {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.gen-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--loc), var(--state-affordable));
+  /* The bar breathes rather than jumps, so continuous production is visible as
+     motion instead of only as a changing number. */
+  transition: width var(--motion-base) linear;
+}
+
+.gen-meter.is-idle .gen-meter-fill {
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Targeted, not a blanket override.
+
+     A global `* { animation-duration: 0.01ms !important }` was the first thing
+     tried here and it was wrong twice over. It also neutralises the event
+     effects rather than replacing them, so a reduced-motion player gets a
+     flash with no feedback at all instead of a non-motion substitute. And it
+     is indiscriminate -- it would silently flatten any animation added later,
+     including ones with no reduced-motion intent.
+
+     The rule is: kill the decorative motion, keep the information. The meter
+     still shows real output, just without animating its width. */
+  .card.just-bought,
+  .card.just-unlocked,
+  .workspace.is-burning {
+    animation: none;
+  }
+
+  .gen-meter-fill {
+    transition: none;
+  }
+
+  .card {
+    transition: none;
+  }
+
+  .nav-item,
+  .nav-label {
+    transition: none;
+  }
+}
+
 .card-header {
   display: flex;
   gap: 0.7rem;

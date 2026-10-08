@@ -12,6 +12,7 @@ import { requireGenDef } from '../game/generators';
 import { costForBulkPurchase, effectiveCostGrowth, formatDecimal, maxAffordable } from '../game/formulas';
 import { BuyAmountToggle } from './BuyAmountToggle';
 import { RESOURCE_UNITS } from '../game/labels';
+import { usePulse } from '../game/useFlash';
 
 export interface GeneratorCardProps {
   generatorId: GeneratorId;
@@ -39,8 +40,39 @@ export function GeneratorCard({ generatorId }: GeneratorCardProps) {
 
   const buyLabel = amount === 'max' ? `Buy MAX (${count})` : `Buy ×${amount}`;
 
+  // Event layer, driven by real state rather than a timer.
+  //
+  // `owned` is the trigger for the purchase flash: it only changes when a
+  // purchase lands, so it is a faithful proxy for "the player bought something"
+  // without the card subscribing to its own click handler. `unlocked` is the
+  // generator appearing, which is the moment the game pays the player.
+  const bought = usePulse(owned);
+  // Generators arrive already-unlocked, so the card mounts rather than
+  // transitioning. Reading the flag through the store (rather than at module
+  // scope) keeps this correct if a save is hydrated to a mid-game state.
+  const unlockedFlag = useGameStore((s) => s.gameState.generators[generatorId]?.unlocked === true);
+  const justUnlocked = usePulse(unlockedFlag, 900);
+
+  // The meter shows live output. It is scaled against the strongest generator on
+  // screen so the longest bar means "your biggest producer" rather than an
+  // arbitrary cap that would leave every card looking equally full.
+  const strongestRate = useGameStore((s) => {
+    const per = s.transient.production.perGenerator;
+    let max = 0;
+    for (const id of Object.keys(per) as GeneratorId[]) {
+      const v = Number(per[id].toString());
+      if (Number.isFinite(v) && v > max) max = v;
+    }
+    return max;
+  });
+  const meterPct = strongestRate > 0 ? Math.min(100, (Number(rate.toString()) / strongestRate) * 100) : 0;
+
   return (
-    <article className={`card generator-card ${affordable ? 'is-affordable' : ''}`}>
+    <article
+      className={`card generator-card ${affordable ? 'is-affordable' : ''} ${
+        bought ? 'just-bought' : ''
+      } ${justUnlocked ? 'just-unlocked' : ''}`}
+    >
       <header className="card-header">
         <span className="card-icon" aria-hidden="true">
           {def.icon}
@@ -51,6 +83,13 @@ export function GeneratorCard({ generatorId }: GeneratorCardProps) {
         </div>
         <span className="owned-badge">{owned}</span>
       </header>
+
+      <div
+        className={`gen-meter ${Number(rate.toString()) > 0 ? '' : 'is-idle'}`}
+        role="presentation"
+      >
+        <div className="gen-meter-fill" style={{ width: `${meterPct}%` }} />
+      </div>
 
       <dl className="card-stats">
         <div>

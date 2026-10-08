@@ -69,10 +69,15 @@ function GameRuntime() {
 export default function App() {
   const hydrate = useGameStore((s) => s.hydrate);
   const performPrestige = useGameStore((s) => s.performPrestige);
+  // Driven by the reset actually landing, not by the button being clicked: the
+  // click can be refused, and a sweep that fired on a refusal would tell the
+  // player something happened that did not.
+  const prestigeCount = useGameStore((s) => s.gameState.stats.prestigeCount);
 
   const [hydrated, setHydrated] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [burning, setBurning] = useState(false);
   const hydratedRef = useRef(false);
 
   // Hydrate exactly once, even under React 19 StrictMode double-invocation.
@@ -99,8 +104,21 @@ export default function App() {
     setConfirmResetOpen(false);
     if (!result.ok && result.error) {
       console.warn('[prestige]', result.error);
+      return;
     }
-  }, [performPrestige]);
+    // Confirm the reset changed something before celebrating it.
+    if (useGameStore.getState().gameState.stats.prestigeCount !== prestigeCount) {
+      setBurning(true);
+    }
+  }, [performPrestige, prestigeCount]);
+
+  // Clear the burn after the sweep has run. A timer rather than a CSS class
+  // left on permanently, so re-renders cannot re-arm the animation.
+  useEffect(() => {
+    if (!burning) return;
+    const timer = setTimeout(() => setBurning(false), 800);
+    return () => clearTimeout(timer);
+  }, [burning]);
 
   if (!hydrated) {
     return (
@@ -115,6 +133,7 @@ export default function App() {
       <Layout
         onOpenPrestige={() => setConfirmResetOpen(true)}
         onOpenDebug={DEV_TOOLS_ENABLED ? () => setDebugOpen(true) : undefined}
+        burning={burning}
       />
 
       <GameRuntime />

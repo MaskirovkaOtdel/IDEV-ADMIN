@@ -18,6 +18,8 @@ export type TabId = 'generators' | 'upgrades' | 'prestige';
 export interface LayoutProps {
   onOpenPrestige: () => void;
   onOpenDebug?: () => void;
+  /** True for a short window after a prestige reset, to play the burn sweep. */
+  burning?: boolean;
 }
 
 const TABS: { id: TabId; label: string; hint: string }[] = [
@@ -26,7 +28,7 @@ const TABS: { id: TabId; label: string; hint: string }[] = [
   { id: 'prestige', label: 'Prestige', hint: 'Burn it for Tech Debt' },
 ];
 
-export function Layout({ onOpenPrestige, onOpenDebug }: LayoutProps) {
+export function Layout({ onOpenPrestige, onOpenDebug, burning }: LayoutProps) {
   const [tab, setTab] = useState<TabId>('generators');
   const loadWarning = useGameStore((s) => s.loadWarning);
   const lifetimeCash = useGameStore((s) => s.gameState.resources.lifetimeCash);
@@ -72,7 +74,7 @@ export function Layout({ onOpenPrestige, onOpenDebug }: LayoutProps) {
         </div>
       </aside>
 
-      <main className="workspace">
+      <main className={`workspace ${burning ? 'is-burning' : ''}`}>
         <HeaderBar lifetimeCash={lifetimeCash} />
 
         {loadWarning && (
