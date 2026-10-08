@@ -208,6 +208,98 @@ export const PERM_UPGRADE_DEFS: PermUpgradeDef[] = [
       { kind: 'costDiscount', value: 0.6 },
     ],
   },
+
+  // --- Tier 16-22: the late layer. ------------------------------------------------------
+  //
+  // These are reachable now, which the tier 11-15 entries were not: with the
+  // payout curve in prestige.ts, anything above a few thousand Tech Debt sat
+  // behind arithmetic that could never close. Costs here are chosen to sit
+  // above what a first day of play banks, so they are goals rather than
+  // filler, and to spread across the effect kinds that were thin up here.
+  {
+    id: 'staffAugmentation',
+    name: 'Staff Augmentation',
+    description: 'Permanent ×3 Junior Dev, Senior Dev and Code Review production.',
+    baseCost: dec(8_000),
+    costMultiplier: 3.5,
+    group: 'production',
+    effects: [
+      { kind: 'generatorMult', target: 'juniorDev', value: 3 },
+      { kind: 'generatorMult', target: 'seniorDev', value: 3 },
+      { kind: 'generatorMult', target: 'codeReview', value: 3 },
+    ],
+  },
+  {
+    id: 'testAutomation',
+    name: 'Test Automation',
+    description: 'Permanent ×3 Linter, Test Suite and CI/CD Pipeline production.',
+    baseCost: dec(20_000),
+    costMultiplier: 3.5,
+    group: 'production',
+    effects: [
+      { kind: 'generatorMult', target: 'linter', value: 3 },
+      { kind: 'generatorMult', target: 'testSuite', value: 3 },
+      { kind: 'generatorMult', target: 'ciPipeline', value: 3 },
+    ],
+  },
+  {
+    id: 'infrastructureAsCode',
+    name: 'Infrastructure as Code',
+    description: 'Permanent ×3 K8s Cluster production, and −0.01 to every generator cost growth.',
+    baseCost: dec(60_000),
+    costMultiplier: 3.5,
+    group: 'economy',
+    effects: [
+      { kind: 'generatorMult', target: 'k8sCluster', value: 3 },
+      { kind: 'costGrowthDelta', value: -0.01 },
+    ],
+  },
+  {
+    id: 'revenueStream',
+    name: 'Revenue Stream',
+    description: 'Permanent ×4 revenue from stockpiled LoC and Coffee.',
+    baseCost: dec(150_000),
+    costMultiplier: 3.5,
+    group: 'economy',
+    effects: [{ kind: 'revenueMult', value: 4 }],
+  },
+  {
+    id: 'chaosEngineering',
+    name: 'Chaos Engineering',
+    description: 'Permanent ×1.6 offline efficiency, and generator costs ×0.85.',
+    baseCost: dec(300_000),
+    costMultiplier: 3.5,
+    group: 'convenience',
+    effects: [
+      { kind: 'offlineEfficiency', value: 1.6 },
+      { kind: 'costDiscount', value: 0.85 },
+    ],
+  },
+  {
+    id: 'zeroDowntime',
+    name: 'Zero Downtime',
+    description: 'Permanent ×2 to all production, and −0.02 to every generator cost growth.',
+    baseCost: dec(750_000),
+    costMultiplier: 3.5,
+    group: 'production',
+    effects: [
+      { kind: 'globalMult', value: 2 },
+      { kind: 'costGrowthDelta', value: -0.02 },
+    ],
+  },
+  {
+    id: 'enterpriseContract',
+    name: 'Enterprise Contract',
+    description: 'Permanent ×2.5 to all production, ×1.5 to revenue, and costs ×0.7.',
+    baseCost: dec(2_000_000),
+    costMultiplier: 3.5,
+    group: 'production',
+    effects: [
+      { kind: 'globalMult', value: 2.5 },
+      { kind: 'revenueMult', value: 1.5 },
+      { kind: 'costDiscount', value: 0.7 },
+    ],
+  },
 ];
 
 const BY_ID = new Map<PermUpgradeId, PermUpgradeDef>(PERM_UPGRADE_DEFS.map((u) => [u.id, u]));

@@ -40,10 +40,41 @@ export const CURRENT_SAVE_VERSION = 1;
 
 /** Lifetime cash below which a reset awards nothing. */
 export const TECH_DEBT_FLOOR_LOG = 3; // 1e3
-/** Exponent applied to the decade offset; >1 makes early decades cheap. */
-export const TECH_DEBT_EXPONENT = 1.6;
-/** Tech Debt per unit of the scaled curve. */
-export const TECH_DEBT_SCALE = 6;
+/**
+ * Exponent applied to the decade offset.
+ *
+ * This is the knob that decides how long the game is. At 1.6 the payout grew
+ * by a shrinking factor per decade -- x3.00, then x1.89, x1.62, and by the top
+ * of the range x1.11 -- so each extra decade of play was worth barely more than
+ * the last. That compressed a huge span of play into a few hundred Tech Debt
+ * and left most of the permanent pool permanently out of reach: costs ran to
+ * 2,000,000 while even 1e18 lifetime cash paid out 456.
+ *
+ * At 4 the curve is still gentle where the first prestige happens, and steep
+ * where the late game is, so reaching the top of the ladder is a matter of
+ * playing rather than a matter of arithmetic that can never close.
+ */
+export const TECH_DEBT_EXPONENT = 4;
+/**
+ * Tech Debt per unit of the scaled curve.
+ *
+ * Chosen so a 1e7 lifetime-cash run still pays 55 -- unchanged from the old
+ * curve -- which keeps the 45-60 minute first-prestige window exactly where it
+ * was verified. All of the reshaping happens beyond that point.
+ */
+export const TECH_DEBT_SCALE = 0.215;
+
+/**
+ * Every reset pays at least this much.
+ *
+ * The curve floors to whole Tech Debt, so a steep exponent leaves the first
+ * few decades rounding down to zero. That makes a reset pay nothing at all for
+ * a short run, which turns prestige into a dead end: the player resets, banks
+ * no currency, and has to rebuild from zero to try again. A floor of one keeps
+ * prestige always worth doing, and one debt is far too little to matter against
+ * the 25-debt first tier.
+ */
+export const MIN_TECH_DEBT_AWARD = 1;
 
 /** Decimal.log10 of a lifetime-cash value, guarded for values below 1. */
 function safeLog10(value: Decimal): number {
@@ -76,7 +107,7 @@ export function techDebtForLifetimeCash(lifetimeCash: Decimal): Decimal {
   if (decades <= 0) return ZERO;
   const scaled = Math.pow(decades, TECH_DEBT_EXPONENT) * TECH_DEBT_SCALE;
   if (!Number.isFinite(scaled) || scaled <= 0) return ZERO;
-  return Decimal.fromNumber(Math.floor(scaled));
+  return Decimal.fromNumber(Math.max(MIN_TECH_DEBT_AWARD, Math.floor(scaled)));
 }
 
 /** Lifetime cash needed to reach a given Tech Debt total (inverse of the curve). */

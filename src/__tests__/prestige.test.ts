@@ -11,6 +11,7 @@ import {
   computeTechDebtGained,
   techDebtForLifetimeCash,
   lifetimeCashForTechDebt,
+  MIN_TECH_DEBT_AWARD,
   resetForPrestige,
   purchasePermUpgrade,
   canPrestige,
@@ -58,6 +59,45 @@ describe('computeTechDebtGained – curve', () => {
     const payout = Number(computeTechDebtGained(withLifetimeCash(1e7)).toString());
     expect(payout).toBeGreaterThanOrEqual(25);
     expect(payout).toBeLessThan(80);
+  });
+
+  it('pays at least the minimum award, so prestige is never a dead end', () => {
+    // A steep exponent floors small runs to zero Tech Debt. Without a floor the
+    // player resets, banks nothing, and has to rebuild from zero to try again.
+    for (const cash of [1e4, 1e5, 1e6]) {
+      const payout = Number(computeTechDebtGained(withLifetimeCash(cash)).toString());
+      expect(payout).toBeGreaterThanOrEqual(MIN_TECH_DEBT_AWARD);
+    }
+    // And still pays nothing at or below the floor itself.
+    expect(computeTechDebtGained(withLifetimeCash(1e3)).toString()).toBe('0');
+  });
+
+  it('earns the dearest permanent upgrade within a reachable lifetimeCash', () => {
+    // THE REGRESSION THIS GUARDS.
+    //
+    // Costs in the permanent pool ran to 2,000,000 Tech Debt while the payout
+    // curve grew by a shrinking factor per decade, so earning that much needed a
+    // lifetimeCash around 1e2828. Ten of fifteen upgrades were therefore dead
+    // content: never reachable, not merely late.
+    //
+    // Nothing failed when that shipped. The curve tests only asserted
+    // monotonicity and a sane payout at 1e7, both of which a curve that never
+    // reaches its own price list satisfies perfectly. This asserts the two
+    // numbers actually meet.
+    const dearest = PERM_UPGRADE_DEFS.reduce(
+      (max: PermUpgradeDef, def: PermUpgradeDef) =>
+        Number(def.baseCost.toString()) > Number(max.baseCost.toString()) ? def : max
+    );
+    const price = Number(dearest.baseCost.toString());
+
+    const cashNeeded = lifetimeCashForTechDebt(price);
+    const decades = Number(cashNeeded.pLog10().toString());
+
+    // Generous but finite: a lifetimeCash past this is not something the
+    // economy can actually reach, which is what made the pool dead content.
+    expect(decades).toBeLessThan(100);
+    // And it must genuinely be a long grind, not a short session.
+    expect(decades).toBeGreaterThan(12);
   });
 
   it('is monotonic and never NaN/Infinity, even at absurd magnitudes', () => {
