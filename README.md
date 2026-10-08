@@ -72,7 +72,11 @@ self-accelerates enough that play style barely matters, which is the intent.
 | `npm run lint` | oxlint |
 | `npm run simulate` | Balance simulation report |
 | `npm run check:workflows` | Parse and shape-check the Actions workflow YAML |
+| `npm run check:workflows` | Parse and shape-check the Actions workflow YAML |
 | `npm run verify` | lint + typecheck + workflows + test + build, the gate for PRs |
+
+Requires Node 22 or newer. `.nvmrc` pins the version CI uses, and the workflows
+read it with `node-version-file` so there is a single place to change it.
 
 ## Deployment
 

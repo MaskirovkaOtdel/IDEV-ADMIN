@@ -1,4 +1,4 @@
-# Release β€” publishes a GitHub Release for a version tag.
+# Release Ξ²β‚¬β€ publishes a GitHub Release for a version tag.
 #
 # Main deploys continuously; tags mark Early Access milestones. So the tag is
 # the thing that gets named, and it also records which commit the milestone was
@@ -34,7 +34,7 @@ jobs:
       # release can never point at a commit that does not pass CI.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
           cache: npm
 
       - run: npm ci
