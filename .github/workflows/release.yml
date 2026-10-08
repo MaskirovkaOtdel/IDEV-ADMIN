@@ -1,4 +1,4 @@
-# Release — publishes a GitHub Release for a version tag.
+# Release β€” publishes a GitHub Release for a version tag.
 #
 # Main deploys continuously; tags mark Early Access milestones. So the tag is
 # the thing that gets named, and it also records which commit the milestone was
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Needed so the changelog can list every commit in the range.
           fetch-depth: 0
@@ -32,7 +32,7 @@ jobs:
 
       # Verifies the tag parses as a version and the tree actually builds, so a
       # release can never point at a commit that does not pass CI.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

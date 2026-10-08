@@ -1,13 +1,13 @@
 # Verify and deploy.
 #
 # One workflow, one status. Previously CI and Deploy were separate, so a push
-# produced two checks that could disagree — and the deploy check failed three
+# produced two checks that could disagree β€” and the deploy check failed three
 # times for a Pages-configuration reason that said nothing about code quality.
 # Merging them means a single check means "this commit is good and live".
 #
 # Flow:
-#   1. verify  — typecheck, test, build, balance simulation
-#   2. deploy  — only on main, only after verify passes, published atomically
+#   1. verify  β€” typecheck, test, build, balance simulation
+#   2. deploy  β€” only on main, only after verify passes, published atomically
 #
 # The deploy gate matters: auto-deploying without one ships a broken commit to
 # players the moment it is pushed.
@@ -37,9 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -75,9 +75,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -89,13 +89,13 @@ jobs:
       # Pages source must be set to "GitHub Actions" in Settings > Pages. Setting
       # it to "Deploy from a branch" publishes the repository root instead, which
       # serves the dev index.html and a blank page.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
       # Atomic swap: visitors see the old build or the new one, never a partial
       # deploy.
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
