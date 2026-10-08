@@ -1,3 +1,23 @@
+/**
+ * Dev tools are compiled out of production builds.
+ *
+ * The debug panel grants resources, simulates ticks and hard-resets the save.
+ * None of that can corrupt a real save — `grantResources` deliberately leaves
+ * lifetime accounting alone — but it has no business being reachable by a
+ * player who did not build the game. It was previously wired to a visible
+ * sidebar link and the Escape key with no guard at all, so every visitor to the
+ * deployed site had it.
+ *
+ * This constant gates all three entry points rather than just the button: the
+ * Escape handler and the panel render are checked too, so the shortcut cannot
+ * reopen what the link hides.
+ *
+ * `import.meta.env.DEV` is a build-time substitution, not a runtime check, so
+ * this collapses to `false` in the shipped bundle and the code is dead-weight
+ * dropped by minification.
+ */
+const DEV_TOOLS_ENABLED = import.meta.env.DEV;
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout } from './ui/Layout';
 import { ConfirmResetModal } from './ui/ConfirmResetModal';
@@ -63,8 +83,10 @@ export default function App() {
     setHydrated(true);
   }, [hydrate]);
 
-  // Escape toggles the debug panel.
+  // Escape toggles the debug panel — dev builds only, so the shortcut cannot
+  // reach tools the sidebar link does not offer in production.
   useEffect(() => {
+    if (!DEV_TOOLS_ENABLED) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setDebugOpen((open) => !open);
     };
@@ -92,7 +114,7 @@ export default function App() {
     <div className="app">
       <Layout
         onOpenPrestige={() => setConfirmResetOpen(true)}
-        onOpenDebug={() => setDebugOpen(true)}
+        onOpenDebug={DEV_TOOLS_ENABLED ? () => setDebugOpen(true) : undefined}
       />
 
       <GameRuntime />
@@ -104,7 +126,10 @@ export default function App() {
         onConfirm={onConfirmPrestige}
       />
 
-      <DebugPanel isVisible={debugOpen} setVisible={setDebugOpen} />
+      {/* Never mounted in a production build: without this the Escape handler could
+          still flip debugOpen and render the panel, defeating the guard on the
+          sidebar link. */}
+      {DEV_TOOLS_ENABLED && <DebugPanel isVisible={debugOpen} setVisible={setDebugOpen} />}
     </div>
   );
 }

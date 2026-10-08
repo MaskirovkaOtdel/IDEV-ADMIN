@@ -17,7 +17,7 @@ export type TabId = 'generators' | 'upgrades' | 'prestige';
 
 export interface LayoutProps {
   onOpenPrestige: () => void;
-  onOpenDebug: () => void;
+  onOpenDebug?: () => void;
 }
 
 const TABS: { id: TabId; label: string; hint: string }[] = [
@@ -61,9 +61,14 @@ export function Layout({ onOpenPrestige, onOpenDebug }: LayoutProps) {
 
         <div className="sidebar-footer">
           <SaveStatusIndicator />
-          <button type="button" className="link-button" onClick={onOpenDebug}>
-            Debug (Esc)
-          </button>
+          {/* Rendered only when a handler is supplied. In a production build
+              `onOpenDebug` is undefined, so the dev affordance is absent rather
+              than present and inert. */}
+          {onOpenDebug && (
+            <button type="button" className="link-button" onClick={onOpenDebug}>
+              Debug (Esc)
+            </button>
+          )}
         </div>
       </aside>
 
