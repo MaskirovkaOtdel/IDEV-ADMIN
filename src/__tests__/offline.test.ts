@@ -12,7 +12,9 @@ import {
   offlineEfficiencyFor,
   OFFLINE_EFFICIENCY,
   MAX_OFFLINE_SECONDS,
+  MAX_OFFLINE_EFFICIENCY,
 } from '../game/offline';
+import { engineTick } from '../game/engine';
 import { createInitialState } from '../game/serialize';
 import { dec, ZERO } from '../game/decimal';
 import type { GameState } from '../game/types';
@@ -185,5 +187,134 @@ describe('offline efficiency from permanent upgrades', () => {
     state.prestige.permanentUpgrades = { onCallRotation: 1 };
     const { report } = applyOfflineProgress(state, HOUR);
     expect(report.efficiency).toBeCloseTo(1, 6);
+  });
+});
+
+/**
+ * What a player actually gets after a real night away.
+ *
+ * The tests above pin the arithmetic at convenient sizes: one hour, forty-eight
+ * hours, a toy state with one generator. None of them answer the question a
+ * player has, which is "I slept, what did I wake up with?" So these run a
+ * realistic mid-game state through realistic absences.
+ *
+ * The properties asserted here are the ones that would be player-visible bugs:
+ * the cap is honoured at every duration, offline never pays more than live play
+ * for the same span, and the numbers in the report are the numbers the modal
+ * renders.
+ */
+describe('overnight catch-up, realistic state', () => {
+  /** A mid-game save: several generators, some upgrades, post-first-prestige. */
+  function midGame(): GameState {
+    const state = createInitialState();
+    state.resources.cash = ZERO;
+    state.generators.juniorDev = { owned: 220, unlocked: true };
+    state.generators.seniorDev = { owned: 140, unlocked: true };
+    state.generators.codeReview = { owned: 90, unlocked: true };
+    state.generators.linter = { owned: 40, unlocked: true };
+    state.upgrades.purchased = ['pairProgramming', 'codeMaster'];
+    state.stats.totalCashEarned = dec(1_500_000);
+    state.prestige.techDebt = dec(60);
+    state.stats.prestigeCount = 1;
+    return state;
+  }
+
+  it('credits an 8h absence at 4h of production, not 8h', () => {
+    const { report } = applyOfflineProgress(midGame(), 8 * HOUR);
+
+    expect(report.cappedSeconds).toBe(MAX_OFFLINE_SECONDS);
+    expect(report.effectiveSeconds).toBeCloseTo(MAX_OFFLINE_SECONDS / 2, 6);
+    // This is the number the modal prints as "credited".
+    expect(Number(report.gained.cash?.toString())).toBeGreaterThan(0);
+  });
+
+  it('clamps at every duration past the cap, with no step change', () => {
+    const state = midGame();
+
+    const at8 = applyOfflineProgress(state, 8 * HOUR).report.gained.cash;
+    const at9 = applyOfflineProgress(state, 9 * HOUR).report.gained.cash;
+    const at24 = applyOfflineProgress(state, 24 * HOUR).report.gained.cash;
+    const at72 = applyOfflineProgress(state, 72 * HOUR).report.gained.cash;
+
+    // An hour past the cap must be worth nothing: if any of these differ, the
+    // clamp leaks and a longer absence pays more than a shorter one.
+    expect(Number(at9?.toString())).toBeCloseTo(Number(at8?.toString()), 3);
+    expect(Number(at24?.toString())).toBeCloseTo(Number(at8?.toString()), 3);
+    expect(Number(at72?.toString())).toBeCloseTo(Number(at8?.toString()), 3);
+  });
+
+  it('never pays more than live play over the same wall-clock span', () => {
+    const state = midGame();
+    const { state: afterOffline, report } = applyOfflineProgress(state, 4 * HOUR);
+
+    // Same engine, same span, no efficiency discount: this is the ceiling an
+    // idle game must never exceed, or there is no reason to ever play live.
+    const liveState = midGame();
+    let remaining = 4 * HOUR / 1000;
+    const now = Date.now();
+    while (remaining > 0) {
+      const step = Math.min(remaining, 2);
+      engineTick(liveState, step, now);
+      remaining -= step;
+    }
+
+    const offlineGain = Number(report.gained.cash?.toString());
+    const liveGain = Number(liveState.resources.cash.toString());
+    const ratio = offlineGain / liveGain;
+
+    expect(Number(afterOffline.resources.cash.toString())).toBeGreaterThan(0);
+
+    // The invariant that matters: a player is never better off staying away.
+    expect(offlineGain).toBeLessThan(liveGain);
+
+    // At 50% efficiency this should be near half of live play, but it lands
+    // lower because production compounds *inside* the credited window: the
+    // second half of an absence is worth more than the first, so crediting half
+    // the span earns less than half the span. Measured at ~0.25 over 4h from
+    // this state. The floor is set well below that so the assertion survives
+    // balance changes, while still failing if overnight credit collapses.
+    expect(ratio).toBeGreaterThan(0.1);
+    expect(ratio).toBeLessThan(0.5);
+  });
+
+  it('pays strictly more for a longer absence', () => {
+    const state = midGame();
+    const at2h = Number(applyOfflineProgress(state, 2 * HOUR).report.gained.cash?.toString());
+    const at4h = Number(applyOfflineProgress(state, 4 * HOUR).report.gained.cash?.toString());
+    const at8h = Number(applyOfflineProgress(state, 8 * HOUR).report.gained.cash?.toString());
+
+    // Strictly increasing: if two of these were equal, something in the
+    // pipeline would be discarding time rather than scaling with it.
+    expect(at4h).toBeGreaterThan(at2h);
+    expect(at8h).toBeGreaterThan(at4h);
+  });
+
+  it('reports figures the modal can render without contradicting the cap', () => {
+    const state = midGame();
+    const long = applyOfflineProgress(state, 30 * HOUR).report;
+    const short = applyOfflineProgress(state, 2 * HOUR).report;
+
+    // The modal shows elapsed, and separately flags a cap only when it bit.
+    expect(long.elapsedSeconds).toBeCloseTo(30 * 3600, 3);
+    expect(long.elapsedSeconds > long.cappedSeconds).toBe(true);
+    expect(short.elapsedSeconds > short.cappedSeconds).toBe(false);
+
+    // Effective can never exceed capped, and capped can never exceed elapsed.
+    for (const report of [long, short]) {
+      expect(report.effectiveSeconds).toBeLessThanOrEqual(report.cappedSeconds);
+      expect(report.cappedSeconds).toBeLessThanOrEqual(report.elapsedSeconds + 1e-6);
+      expect(report.efficiency).toBeGreaterThan(0);
+      expect(report.efficiency).toBeLessThanOrEqual(MAX_OFFLINE_EFFICIENCY);
+    }
+  });
+
+  it('sustains a full 8h catch-up in reasonable time', () => {
+    const started = performance.now();
+    applyOfflineProgress(midGame(), MAX_OFFLINE_SECONDS * 1000);
+    const elapsedMs = performance.now() - started;
+
+    // 28800s at 2s steps is 14400 engine iterations. This runs on the hydration
+    // path, so a regression here is a player staring at a frozen tab.
+    expect(elapsedMs).toBeLessThan(1_000);
   });
 });
