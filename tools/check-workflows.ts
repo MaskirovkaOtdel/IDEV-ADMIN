@@ -243,7 +243,7 @@ function checkFile(file: string, expectations: { tagOnly: boolean } | undefined)
         message: 'no release step sets `body`; the release would fall back to generated notes, which are near-empty for a repo that pushes to main',
       });
     } else {
-      const body = String(releaseStep.with.body);
+      const body = String(releaseStep.with?.body);
       if (!body.includes('tag-message')) {
         failures.push({
           file,
