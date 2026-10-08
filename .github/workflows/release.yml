@@ -41,7 +41,12 @@ jobs:
       - run: npm run verify
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Pinned to a SHA, not the floating `v2` major tag. This is the only
+        # third-party action in the repo and the only step holding `contents:
+        # write`, so a tag that repointed would inherit write access to the
+        # repository. `v2` currently resolves to v2.6.2; Dependabot tracks the
+        # SHA and opens a PR when a newer release lands.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           generate_release_notes: true
           draft: false
