@@ -47,7 +47,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck, test, build
+      # Full gate, matching what contributors run locally: lint, typecheck,
+      # test, build. Lint leads because a warning there is the cheapest signal
+      # to act on, and it fails in seconds.
+      - name: Lint, typecheck, test, build
         run: npm run verify
 
       # Reports measured pacing on every run, so an economy regression shows up
@@ -81,6 +84,7 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      - run: npm run lint
 
       # Pages source must be set to "GitHub Actions" in Settings > Pages. Setting
       # it to "Deploy from a branch" publishes the repository root instead, which

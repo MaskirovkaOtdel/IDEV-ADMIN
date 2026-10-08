@@ -13,21 +13,33 @@
  *   • While `document.hidden`, the loop pauses completely. Time spent hidden is
  *     credited once, at offline efficiency, by the store's `catchUp` on return.
  *     This is what makes "no double-crediting" true rather than hoped for.
+ *   • A change to `targetHz` restarts the interval at the new rate. `onTick` does
+ *     not, because a fresh callback identity on every render would otherwise tear
+ *     down and recreate the timer on every render.
  */
 import { useEffect, useRef } from 'react';
 
 /** Default simulation rate. 10Hz is plenty for an idle game and keeps React cheap. */
 export const DEFAULT_TICK_HZ = 10;
 
-export function useGameLoop(onTick: (deltaSeconds: number) => void, targetHz = DEFAULT_TICK_HZ): void {
-  const callbackRef = useRef(onTick);
-  callbackRef.current = onTick;
+function clampHz(value: number): number {
+  return Math.max(1, Math.min(60, value));
+}
 
-  const hzRef = useRef(targetHz);
-  hzRef.current = Math.max(1, Math.min(60, targetHz));
+export function useGameLoop(onTick: (deltaSeconds: number) => void, targetHz = DEFAULT_TICK_HZ): void {
+  // Read the latest callback through a ref so the interval never needs
+  // re-creating. Assigned in an effect rather than during render: React 19 can
+  // render speculatively or replay a render, and writing a ref in the render body
+  // can leave a stale value behind when it does.
+  const callbackRef = useRef(onTick);
+  useEffect(() => {
+    callbackRef.current = onTick;
+  });
+
+  const hz = clampHz(targetHz);
 
   useEffect(() => {
-    const intervalMs = 1000 / hzRef.current;
+    const intervalMs = 1000 / hz;
     let last = Date.now();
     let disposed = false;
 
@@ -69,5 +81,5 @@ export function useGameLoop(onTick: (deltaSeconds: number) => void, targetHz = D
       document.removeEventListener('visibilitychange', onVisibility);
       stop();
     };
-  }, []);
+  }, [hz]);
 }

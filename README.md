@@ -71,7 +71,7 @@ self-accelerates enough that play style barely matters, which is the intent.
 | `npm run typecheck` | `tsc -b`, no emit |
 | `npm run lint` | oxlint |
 | `npm run simulate` | Balance simulation report |
-| `npm run verify` | typecheck + test + build, the gate for PRs |
+| `npm run verify` | lint + typecheck + test + build, the gate for PRs |
 
 ## Deployment
 
@@ -170,6 +170,11 @@ funnels through them so these cannot recur.
 `savedAt`. A save that fails to parse is quarantined to `.corrupt` for
 inspection and the `.backup` is used instead. Both slots are never overwritten
 with known-bad data.
+
+Saves written before the rename to **IDEV : ADMIN** live under `dev-idle:` and
+are migrated automatically on load. The migration only runs when the current
+namespace is empty, never overwrites real progress, and leaves an unreadable
+legacy save in place rather than discarding it.
 
 `GameState.version` is the save-schema version. Adding a field means bumping it,
 defaulting it in `migrateBlob`, and adding a migration test with a hand-written

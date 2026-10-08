@@ -35,13 +35,12 @@ That runs, in order:
 
 | Step | Command | What it checks |
 |---|---|---|
+| Lint | `npm run lint` | oxlint; React and correctness rules |
 | Typecheck | `npm run typecheck` | `tsc -b`, zero errors, `noUnusedLocals` enabled |
 | Tests | `npm test` | Vitest across engine, economy, save, and UI integration |
 | Build | `npm run build` | Production bundle compiles |
 
 If you touch the economy, add or update a test in `src/__tests__/`. The suite is the regression net, and a change that alters generator costs, upgrade multipliers, the prestige curve, or the save format without a corresponding test will be asked for one.
-
-Optionally run `npm run lint` (oxlint) for style and correctness hints.
 
 ## Where things live
 

@@ -19,6 +19,61 @@ export const KEY_BACKUP = `${STORAGE_NAMESPACE}:save.backup`;
 export const KEY_CORRUPT = `${STORAGE_NAMESPACE}:save.corrupt`;
 export const KEY_LAST_SAVED = `${STORAGE_NAMESPACE}:savedAt`;
 
+/**
+ * The namespace used before the game was renamed to IDEV : ADMIN. Progress saved
+ * by that build lives under these keys and would otherwise be orphaned silently
+ * on load — the player would open the game to an empty repo with no explanation.
+ *
+ * Migration only runs when the current namespace is completely empty, so it can
+ * never overwrite real progress. Old keys are removed after a successful move so
+ * the migration does not run twice.
+ */
+const LEGACY_NAMESPACE = 'dev-idle';
+const LEGACY_KEYS: { current: string; backup: string; corrupt: string } = {
+  current: `${LEGACY_NAMESPACE}:save`,
+  backup: `${LEGACY_NAMESPACE}:save.backup`,
+  corrupt: `${LEGACY_NAMESPACE}:save.corrupt`,
+};
+
+/**
+ * Move a pre-rename save into the current namespace.
+ *
+ * @returns true when a legacy save was found and moved.
+ */
+export function migrateLegacySave(): boolean {
+  const store = storage();
+  if (!store) return false;
+
+  // Never touch anything if the current namespace already has a save.
+  if (readKey(KEY_CURRENT)) return false;
+
+  const legacyRaw = readKey(LEGACY_KEYS.current);
+  if (!legacyRaw) return false;
+
+  try {
+    // Only migrate a save we can actually parse. An unreadable legacy save is
+    // left where it is for inspection rather than moved to quarantine blindly.
+    deserializeState(legacyRaw);
+
+    writeKey(KEY_CURRENT, legacyRaw);
+
+    const legacyBackup = readKey(LEGACY_KEYS.backup);
+    if (legacyBackup) writeKey(KEY_BACKUP, legacyBackup);
+    const legacyCorrupt = readKey(LEGACY_KEYS.corrupt);
+    if (legacyCorrupt) writeKey(KEY_CORRUPT, legacyCorrupt);
+
+    removeKey(LEGACY_KEYS.current);
+    removeKey(LEGACY_KEYS.backup);
+    removeKey(LEGACY_KEYS.corrupt);
+
+    console.log('[storage] migrated a pre-rename save into the current namespace');
+    return true;
+  } catch (err) {
+    console.warn('[storage] legacy save found but unreadable, leaving it in place:', err);
+    return false;
+  }
+}
+
 export type LoadSource = 'current' | 'backup' | 'fresh';
 
 export interface LoadResult {
@@ -68,6 +123,9 @@ function removeKey(key: string): void {
 
 /** Safely load the game, falling back through current -> backup -> fresh. */
 export function loadGameState(now: number = Date.now()): LoadResult {
+  // A save from before the rename would otherwise look like a brand-new game.
+  migrateLegacySave();
+
   const currentRaw = readKey(KEY_CURRENT);
 
   if (currentRaw) {

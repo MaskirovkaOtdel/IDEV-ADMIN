@@ -26,6 +26,7 @@ export function DebugPanel({ isVisible, setVisible }: DebugPanelProps) {
   const loadFromString = useGameStore((s) => s.loadFromString);
   const hardReset = useGameStore((s) => s.hardReset);
   const tick = useGameStore((s) => s.tick);
+  const grantResources = useGameStore((s) => s.grantResources);
 
   const [grantAmount, setGrantAmount] = useState('1e6');
   const [log, setLog] = useState<string[]>([]);
@@ -37,11 +38,9 @@ export function DebugPanel({ isVisible, setVisible }: DebugPanelProps) {
 
   const grant = (resource: 'cash' | 'linesOfCode' | 'coffee') => {
     const amount = dec(Number(grantAmount) || 0);
-    const before = gameState.resources[resource];
-    // Local-only mutation for inspection: the next tick clones from the store, so
-    // this is a deliberate, visible state poke rather than a silent one.
-    const store = useGameStore.getState();
-    store.gameState.resources[resource] = before.plus(amount);
+    // Goes through the store so tickVersion and the production snapshot stay
+    // consistent; a direct write would leave cards showing a stale rate.
+    grantResources(resource, amount);
     append(`Granted ${grantAmount} ${resource}`);
   };
 

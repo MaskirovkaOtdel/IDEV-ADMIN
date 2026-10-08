@@ -19,6 +19,7 @@ import type {
   OfflineReport,
   PermUpgradeId,
   ProductionSnapshot,
+  ResourceId,
   UpgradeId,
 } from './types';
 import { GENERATOR_IDS } from './types';
@@ -125,6 +126,16 @@ export interface GameStoreState {
   performPrestige: () => PurchaseResult;
   purchasePermUpgrade: (id: PermUpgradeId) => PurchaseResult;
 
+  // --- dev tools ---
+  /**
+   * Add resources directly, for the debug panel.
+   *
+   * Goes through the store rather than mutating `gameState.resources` in place:
+   * a direct write leaves `tickVersion` unchanged and does not refresh the
+   * production snapshot, so generator cards would keep showing a stale rate.
+   */
+  grantResources: (resource: ResourceId, amount: Decimal) => void;
+
   // --- ui ---
   dismissOfflineReport: () => void;
   setSaveStatus: (status: TransientState['save']['status']) => void;
@@ -230,6 +241,27 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // Only interrupt with a modal when the player was away long enough and
       // actually earned something.
       offlineReport: report.trivial ? null : report,
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // dev tools
+  // -------------------------------------------------------------------------
+  grantResources: (resource, amount) => {
+    const { gameState, transient } = get();
+    const next: GameState = {
+      ...gameState,
+      resources: {
+        ...gameState.resources,
+        [resource]: gameState.resources[resource].plus(amount),
+      },
+      tickVersion: gameState.tickVersion + 1,
+    };
+    // Refresh the snapshot so cards reflect the new stock immediately.
+    const production = computeProductionSnapshot(next);
+    set({
+      gameState: next,
+      transient: { ...transient, production, tickVersion: next.tickVersion },
     });
   },
 

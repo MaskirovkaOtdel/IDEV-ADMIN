@@ -328,6 +328,41 @@ describe('tick', () => {
   });
 });
 
+describe('grantResources (dev tool)', () => {
+  it('adds the amount to the chosen resource only', () => {
+    setCash(100);
+    const before = store().gameState.resources.coffee.toString();
+    store().grantResources('cash', dec(50));
+    expect(Number(store().gameState.resources.cash.toString())).toBeCloseTo(150, 6);
+    expect(store().gameState.resources.coffee.toString()).toBe(before);
+  });
+
+  it('bumps tickVersion and refreshes the production snapshot', () => {
+    // Regression: the debug panel used to write gameState.resources directly,
+    // which left tickVersion untouched and the production snapshot stale, so
+    // cards kept showing the old rate until the next real tick.
+    setCash(100);
+    store().gameState.generators.juniorDev = { owned: 10, unlocked: true };
+    store().tick(0.01);
+    const before = store().transient.production.perResource.cash.toString();
+    const versionBefore = store().gameState.tickVersion;
+
+    store().grantResources('linesOfCode', dec(10_000));
+
+    expect(store().gameState.tickVersion).toBeGreaterThan(versionBefore);
+    // More LoC means more revenue, so the cash rate must have moved.
+    const after = store().transient.production.perResource.cash.toString();
+    expect(Number(after)).toBeGreaterThan(Number(before));
+  });
+
+  it('does not touch lifetime accounting', () => {
+    setCash(100);
+    const lifetime = store().gameState.resources.lifetimeCash.toString();
+    store().grantResources('cash', dec(1_000_000));
+    expect(store().gameState.resources.lifetimeCash.toString()).toBe(lifetime);
+  });
+});
+
 describe('catchUp', () => {
   it('credits hidden time and raises an offline report', () => {
     const state = store().gameState;

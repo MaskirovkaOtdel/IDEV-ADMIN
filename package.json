@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "simulate": "tsx tools/balance-sim.ts",
-    "verify": "npm run typecheck && npm run test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "break_infinity.js": "^2.2.0",

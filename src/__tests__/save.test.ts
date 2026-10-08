@@ -17,6 +17,7 @@ import {
   saveGameState,
   loadGameState,
   clearSaveData,
+  migrateLegacySave,
   KEY_CURRENT,
   KEY_BACKUP,
   KEY_CORRUPT,
@@ -348,6 +349,66 @@ describe('storage', () => {
     expect(getLastSavedAt()).toBeNull();
     saveGameState(populated(), 1_700_000_000_000);
     expect(getLastSavedAt()).toBe(1_700_000_000_000);
+  });
+
+  it('migrates a pre-rename save into the current namespace', () => {
+    clearSaveData();
+
+    // A save written by the build that used the "dev-idle" namespace.
+    const legacy = JSON.stringify({
+      version: CURRENT_SAVE_VERSION,
+      resources: { linesOfCode: '250', coffee: '0', cash: '7000', lifetimeCash: '7000' },
+      generators: { juniorDev: 22 },
+      upgrades: ['codeMaster'],
+      stats: { playSeconds: 120, manualClicks: 2, prestigeCount: 0, runCashEarned: '7000', totalCashEarned: '7000', totalLinesMined: '250' },
+      prestige: { techDebt: '0', totalTechDebtEarned: '0', permanentUpgrades: {}, bestRunLifetimeCash: '0', baselineLifetimeCash: '0' },
+      lastTickAt: Date.now(),
+      tickVersion: 0,
+    });
+    localStorage.setItem('dev-idle:save', legacy);
+
+    const result = loadGameState();
+
+    expect(result.source).toBe('current');
+    expect(result.state.generators.juniorDev.owned).toBe(22);
+    expect(result.state.upgrades.purchased).toContain('codeMaster');
+    expect(Number(result.state.resources.lifetimeCash.toString())).toBe(7000);
+
+    // Moved, not copied.
+    expect(localStorage.getItem('idev-admin:save')).not.toBeNull();
+    expect(localStorage.getItem('dev-idle:save')).toBeNull();
+  });
+
+  it('never lets a legacy save overwrite real progress', () => {
+    clearSaveData();
+    saveGameState(populated());
+
+    const legacy = JSON.stringify({
+      version: CURRENT_SAVE_VERSION,
+      resources: { linesOfCode: '0', coffee: '0', cash: '1', lifetimeCash: '1' },
+      generators: { juniorDev: 99 },
+    });
+    localStorage.setItem('dev-idle:save', legacy);
+
+    const result = loadGameState();
+    expect(result.state.generators.juniorDev.owned).toBe(17); // not 99
+    // The legacy save is left untouched rather than discarded.
+    expect(localStorage.getItem('dev-idle:save')).not.toBeNull();
+  });
+
+  it('leaves an unreadable legacy save in place rather than deleting it', () => {
+    clearSaveData();
+    localStorage.setItem('dev-idle:save', 'not a save at all');
+
+    const result = loadGameState();
+    expect(result.source).toBe('fresh');
+    expect(localStorage.getItem('dev-idle:save')).toBe('not a save at all');
+  });
+
+  it('is a no-op when there is no legacy save', () => {
+    clearSaveData();
+    expect(migrateLegacySave()).toBe(false);
+    expect(localStorage.getItem('idev-admin:save')).toBeNull();
   });
 
   it('clears every slot on hard reset', () => {
