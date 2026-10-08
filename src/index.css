@@ -22,6 +22,65 @@
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
+  /* --- elevation ---------------------------------------------------------
+     Three layers instead of every surface being the same rectangle. Before,
+     panels, cards, chips and buttons were all flat with a 1px border, so
+     nothing led the eye and every element competed equally.
+
+       sunken  the page itself and recessed areas (sidebar, wells)
+       raised  content the player reads
+       overlay transient layers above content (modals, menus)
+
+     Borders are for *state* -- affordable, owned, locked. Structure is
+     communicated by elevation, so the two never have to do the same job. */
+  --surface-sunken: #080a0e;
+  --surface-raised: #12151d;
+  --surface-overlay: #171b26;
+  --surface-inset: #0d1017;
+
+  /* Elevation shadows. Kept small and dark: on a near-black page a large
+     shadow reads as a grey halo rather than depth. */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 12px 40px rgba(0, 0, 0, 0.6);
+
+  /* --- accent discipline -------------------------------------------------
+     The accent used to mark three unrelated things at once: the primary buy
+     button, the active nav pill, and affordable cards. Everything glowed, so
+     nothing read as urgent.
+
+     Now the accent means exactly one thing: this is actionable right now.
+     Navigation uses the border treatment, affordability uses the success
+     colour, and the accent is reserved for the primary action. */
+  --accent-action: #863bff;
+  --accent-action-soft: rgba(134, 59, 255, 0.16);
+  --accent-action-line: rgba(134, 59, 255, 0.55);
+
+  /* Affordability is a *positive* state, so it borrows the success colour
+     rather than the action colour. A player scanning for "what can I buy"
+     should find one consistent signal. */
+  --state-affordable: #52d98b;
+  --state-affordable-soft: rgba(82, 217, 139, 0.12);
+  --state-affordable-line: rgba(82, 217, 139, 0.45);
+
+  /* Owned is a settled state: present, no longer a decision. */
+  --state-owned-line: rgba(126, 242, 193, 0.4);
+  --state-owned-soft: rgba(126, 242, 193, 0.09);
+
+  /* Locked removes colour as well as contrast, so an unreachable card reads
+     as inactive even at a glance. Opacity alone did not do this -- the emoji
+     stayed fully saturated, which pulled the eye toward the thing the player
+     cannot use yet. */
+  --state-locked: #3d4459;
+  --state-locked-soft: rgba(61, 68, 89, 0.3);
+
+  /* --- motion ------------------------------------------------------------
+     One scale, so animation reads as one system rather than ad-hoc durations.
+     Event-driven effects use --motion-fast; ambient uses --motion-base. */
+  --motion-fast: 140ms;
+  --motion-base: 240ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
   font-family: var(--sans);
   color: var(--text);
   background: var(--bg);

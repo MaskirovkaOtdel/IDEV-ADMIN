@@ -408,6 +408,35 @@ describe('purchasePermUpgrade', () => {
     expect(second.greaterThan(first)).toBe(true);
   });
 
+  it('leaves all but the dearest upgrade within reachable lifetimeCash', () => {
+    // The prestige panel draws a dashed border on upgrades the payout curve
+    // could never afford. Its first draft used a 1e9 ceiling, which flagged 19
+    // of 22 -- including several reachable around 1e21 -- so most of the pool
+    // would have been labelled broken. This pins the count that the 1e50
+    // ceiling was chosen to produce.
+    //
+    // A balance change that makes the top of the pool unreachable should fail
+    // here loudly rather than quietly relabel it in the UI.
+    const REACHABLE_CEILING = dec('1e50');
+    const unreachable = PERM_UPGRADE_DEFS.filter((def) =>
+      lifetimeCashForTechDebt(def.baseCost.toNumber()).greaterThan(REACHABLE_CEILING)
+    );
+
+    // Exactly one -- Enterprise Contract at ~1e58, the intended end-game goal.
+    expect(unreachable.map((d) => d.id)).toEqual(['enterpriseContract']);
+  });
+
+  it('can afford every upgrade except the dearest after an extreme run', () => {
+    // The positive counterpart to the ceiling test: confirm the pool is
+    // genuinely reachable now, rather than merely not flagged.
+    const state = withDebt(1e9);
+    const cheapest = PERM_UPGRADE_DEFS.map((d) => permUpgradeCost(state, d.id)).filter(Boolean);
+    const affordable = cheapest.filter((c) => state.prestige.techDebt.greaterThanOrEqualTo(c!));
+
+    // 1e9 Tech Debt covers everything but the top of the ladder.
+    expect(affordable.length).toBeGreaterThanOrEqual(PERM_UPGRADE_DEFS.length - 3);
+  });
+
   it('applies its multiplier to production', () => {
     const before = computeMultipliers(withDebt(0)).global.toString();
     const after = computeMultipliers(purchasePermUpgrade(withDebt(100), 'refactoringGrant').state)

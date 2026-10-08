@@ -15,7 +15,13 @@
   flex-direction: column;
   gap: 1.25rem;
   padding: 1.25rem 1rem;
-  background: var(--bg-sunken);
+  background: var(--surface-sunken);
+  /* Sticky so the nav stays reachable while a long generator list scrolls.
+     An idle game is checked in short bursts, often one-handed. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
   border-right: 1px solid var(--border);
 }
 
@@ -53,9 +59,14 @@
   padding: 0.6rem 0.7rem;
   text-align: left;
   background: transparent;
+  /* The active tab is marked by a left rail rather than a filled pill. A fill
+     put the same accent on navigation that the buy button used, so the two
+     competed; the rail reads as position, not action. */
   border: 1px solid transparent;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-sm);
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
 
 .nav-item:hover {
@@ -63,12 +74,18 @@
 }
 
 .nav-item.active {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
+  background: var(--surface-raised);
+  border-left-color: var(--accent-action);
 }
 
 .nav-label {
   font-weight: 600;
+  color: var(--text-dim);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.nav-item.active .nav-label {
+  color: var(--text);
 }
 
 .nav-hint {
@@ -254,26 +271,60 @@
   flex-direction: column;
   gap: 0.7rem;
   padding: 0.95rem;
-  background: var(--bg-raised);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  transition: border-color 0.15s, transform 0.1s;
+  box-shadow: var(--elev-1);
+  transition: border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
 }
 
+/* Affordable. Uses the success colour, not the action accent: a player
+   scanning for "what can I afford" should find one consistent signal, and the
+   accent is reserved for the primary action on the card. */
 .card.is-affordable {
-  border-color: var(--accent-line);
+  border-color: var(--state-affordable-line);
+  box-shadow: var(--elev-2), 0 0 0 1px var(--state-affordable-soft);
 }
 
 .card.is-affordable:hover {
   transform: translateY(-1px);
+  box-shadow: var(--elev-3), 0 0 0 1px var(--state-affordable-soft);
 }
 
-.card.is-locked {
-  opacity: 0.62;
-}
-
+/* Owned. Settled, no longer a decision, so it is quieter than affordable
+   rather than louder -- the opposite of the previous treatment. */
 .card.is-owned {
-  border-color: rgba(82, 217, 139, 0.35);
+  border-color: var(--state-owned-line);
+  background: linear-gradient(var(--state-owned-soft), var(--state-owned-soft)),
+    var(--surface-raised);
+}
+
+/* Locked. Opacity alone was not enough: the generator emoji stayed fully
+   saturated and pulled the eye toward the card the player cannot use yet.
+   Desaturating it removes colour as a signal of availability. */
+.card.is-locked {
+  border-color: var(--state-locked-soft);
+  background: var(--surface-inset);
+}
+
+.card.is-locked .card-icon,
+.card.is-locked .owned-badge,
+.card.is-locked .card-title {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.card.is-locked .card-flavor,
+.card.is-locked .card-stat-value,
+.card.is-locked .card-stat-label {
+  opacity: 0.5;
+}
+
+/* Explicitly unreachable content (a permanent upgrade costing far more than
+   the curve can pay) is called out rather than left to look merely locked. */
+.card.is-unreachable {
+  border-style: dashed;
 }
 
 .card-header {

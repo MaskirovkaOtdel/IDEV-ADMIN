@@ -310,6 +310,39 @@ describe('App – prestige flow', () => {
   });
 });
 
+describe('App – card states are visually distinct', () => {
+  it('marks unaffordable and out-of-reach upgrades differently', async () => {
+    // The Prestige panel used to render every unaffordable upgrade with the same
+    // dimmed treatment, so one that simply had not been saved for yet looked
+    // identical to one the payout curve could never afford. Those are different
+    // problems, and conflating them is how ten dead upgrades went unnoticed.
+    await mount();
+    await act(async () => {
+      useGameStore.setState((s) => ({
+        gameState: {
+          ...s.gameState,
+          resources: { ...s.gameState.resources, lifetimeCash: dec(1e9) },
+        },
+      }));
+    });
+    await clickTab('Prestige');
+
+    const cards = [...document.querySelectorAll('.perm-card')];
+    expect(cards.length).toBeGreaterThan(0);
+
+    const classes = cards.map((c) => c.className);
+    const locked = classes.filter((c) => c.includes('is-locked'));
+    const unreachable = classes.filter((c) => c.includes('is-unreachable'));
+
+    // Exactly one upgrade is genuinely out of reach on the current curve.
+    expect(unreachable).toHaveLength(1);
+    // The rest are merely unaffordable, and must not be labelled unreachable.
+    expect(locked.length).toBeGreaterThan(10);
+    expect(unreachable[0]).toContain('is-unreachable');
+    expect(unreachable[0]).not.toContain('is-locked');
+  });
+});
+
 describe('App – prestige formula is not a hardcoded literal', () => {
   it('renders the exponent and scale the payout actually uses', async () => {
     // The panel used to display "^1.6 × 6" as a hand-written string while the
