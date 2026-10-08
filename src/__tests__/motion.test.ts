@@ -1,6 +1,20 @@
 /**
  * Perceivability checks for the event layer.
  *
+ * RUNS AGAINST A BUILD, ON PURPOSE
+ * -------------------------------
+ * These read `dist/assets/*.css` rather than `src/App.css`. The point is to
+ * assert on what actually ships: the minifier rewrites translateX to translate,
+ * merges adjacent selectors, turns 380ms into .38s and collapses media-query
+ * spacing, so a threshold that holds in the source can be absent from the
+ * bundle. Three separate assertions here were wrong before this was matched
+ * against the real minified output.
+ *
+ * That dependency has a cost: the suite needs `dist/` to exist, so `npm run
+ * verify` builds before testing. It previously ran tests first, which worked
+ * locally because a stale `dist/` was always lying around and failed on a clean
+ * CI machine.
+ *
  * WHY THIS EXISTS
  * ---------------
  * v0.3.0 shipped animations that were technically present and practically
@@ -10,11 +24,8 @@
  * asserted anything about size or duration, so "technically present, invisibly
  * small" was indistinguishable from working.
  *
- * These assert the thresholds directly. They are deliberately blunt: a bloom
- * under 20px or a meter under 3px fails here rather than shipping again.
- *
- * The v0.3.0 numbers are recorded as the regression these guard. Anyone lowering
- * them has to change this file, which is the point.
+ * The v0.3.0 numbers are recorded below as the regression these guard. Anyone
+ * lowering them has to change this file, which is the point.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';

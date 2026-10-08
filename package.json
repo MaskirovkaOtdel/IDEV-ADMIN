@@ -15,9 +15,10 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:motion": "npm run build && vitest run src/__tests__/motion.test.ts",
     "simulate": "tsx tools/balance-sim.ts",
     "check:workflows": "tsx tools/check-workflows.ts",
-    "verify": "npm run lint && npm run typecheck && npm run check:workflows && npm run test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run check:workflows && npm run build && npm run test"
   },
   "dependencies": {
     "break_infinity.js": "^2.2.0",

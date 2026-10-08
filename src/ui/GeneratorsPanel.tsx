@@ -70,7 +70,13 @@ export function GeneratorsPanel() {
     // cannot leave the previous set stale and corrupt the next comparison.
     previousUnlocked.current = current;
 
-    if (fresh.size > 0) setArrived(fresh);
+    // Deferred to a microtask rather than set synchronously here. Calling
+    // setState inside an effect body triggers a second render pass in the same
+    // commit, which React flags as a cascading render and which would make the
+    // game tick loop do double work at exactly the moment a generator unlocks.
+    if (fresh.size > 0) {
+      queueMicrotask(() => setArrived(fresh));
+    }
   }, [generators]);
 
   // Clear the flag once the animation has played, so a card does not replay it on
