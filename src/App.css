@@ -373,6 +373,14 @@
   font-weight: 600;
   font-size: 0.88rem;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  /* 44px is the smallest reliably hittable target on a phone. Measured: the buy
+     button was 38px tall before this, below the threshold, on the control an
+     idle-game player taps most often. min-height rather than padding so growing
+     the target does not reflow the card around it. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn:hover:not(:disabled) {
@@ -417,6 +425,9 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
+  /* These were 30px tall, and they carry the x10 / x100 / MAX selection that an
+     idle-game player reaches for constantly. Same 44px floor as .btn. */
+  min-height: 44px;
 }
 
 .chip-button.active {
