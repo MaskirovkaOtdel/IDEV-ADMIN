@@ -71,7 +71,8 @@ self-accelerates enough that play style barely matters, which is the intent.
 | `npm run typecheck` | `tsc -b`, no emit |
 | `npm run lint` | oxlint |
 | `npm run simulate` | Balance simulation report |
-| `npm run verify` | lint + typecheck + test + build, the gate for PRs |
+| `npm run check:workflows` | Parse and shape-check the Actions workflow YAML |
+| `npm run verify` | lint + typecheck + workflows + test + build, the gate for PRs |
 
 ## Deployment
 
@@ -79,9 +80,9 @@ Every green push to `main` deploys to GitHub Pages automatically. One workflow
 (`.github/workflows/verify-deploy.yml`) does both halves, so a commit gets a
 single check that means "this is good and it is live":
 
-- **Verify** — typecheck, test, build, plus a balance simulation, on every push
-  and PR. Running the simulation means an economy regression shows up in the log
-  instead of waiting to be noticed.
+- **Verify** — lint, typecheck, workflow YAML check, test, build, plus a balance
+  simulation, on every push and PR. Running the simulation means an economy
+  regression shows up in the log instead of waiting to be noticed.
 - **Deploy** — `main` only, only after verify passes, published with an atomic
   swap so visitors see the old build or the new one and never a partial deploy.
 
@@ -101,6 +102,15 @@ git push origin v0.1.0
 
 A tag containing `-` is marked as a prerelease. A release can never point at a
 commit that does not pass CI, because the release workflow verifies first.
+
+Tags are created by hand on purpose: they name a milestone and record which
+commit it was cut from, which is not something a CI run should decide.
+
+`npm run check:workflows` is in the verify gate because a workflow with a YAML
+syntax error is worse than a failing one. GitHub cannot read any field in it, so
+it runs zero steps and its tag-only trigger silently degrades to firing on every
+push. That is how `release.yml` spent its whole life broken while every other
+check stayed green.
 
 ### Dependencies
 

@@ -48,8 +48,8 @@ jobs:
         run: npm ci
 
       # Full gate, matching what contributors run locally: lint, typecheck,
-      # test, build. Lint leads because a warning there is the cheapest signal
-      # to act on, and it fails in seconds.
+      # workflow YAML check, test, build. Lint leads because a warning there is
+      # the cheapest signal to act on, and it fails in seconds.
       - name: Lint, typecheck, test, build
         run: npm run verify
 

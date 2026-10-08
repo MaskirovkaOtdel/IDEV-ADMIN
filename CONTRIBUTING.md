@@ -37,6 +37,7 @@ That runs, in order:
 |---|---|---|
 | Lint | `npm run lint` | oxlint; React and correctness rules |
 | Typecheck | `npm run typecheck` | `tsc -b`, zero errors, `noUnusedLocals` enabled |
+| Workflows | `npm run check:workflows` | Every `.github/workflows/*.yml` parses and declares the shape CI needs |
 | Tests | `npm test` | Vitest across engine, economy, save, and UI integration |
 | Build | `npm run build` | Production bundle compiles |
 
@@ -50,7 +51,8 @@ If you touch the economy, add or update a test in `src/__tests__/`. The suite is
 | `src/ui/` | Screens and panels |
 | `src/components/` | Reusable interactive cards |
 | `src/__tests__/` | Vitest suites |
-| `tools/` | Balance simulation (see below) |
+| `tools/` | Balance simulation (see below) and the workflow YAML check |
+| `.github/` | Actions workflows and Dependabot config |
 
 `src/game/` holds no React imports. Keep it that way: the engine must stay testable in isolation and reusable outside the UI.
 

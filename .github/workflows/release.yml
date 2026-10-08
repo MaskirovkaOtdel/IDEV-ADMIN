@@ -47,4 +47,3 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
-'
