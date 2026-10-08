@@ -126,6 +126,38 @@ npm run simulate
 
 Include the output in your pull request description. A balance change without measured before/after numbers is very likely to get pushback, however reasonable it sounds.
 
+### The gate
+
+CI runs the simulation with `--check`, which asserts two invariants and exits
+non-zero when either fails:
+
+- **First-tier window** — both profiles reach the first permanent tier inside
+  the tuning window.
+- **Ladder rate** — at least `LADDER_MIN_PURCHASES_PER_HOUR` permanent
+  purchases per hour at a 12h horizon.
+
+The second one exists because of a bug that shipped with everything green: ten
+of fifteen permanent upgrades were unreachable, since the payout curve could
+never earn their cost. Every existing test still passed, because they only
+checked the curve near `1e7`, far from where it broke. **Nothing asserted that
+what upgrades cost and what the economy can pay actually meet.**
+
+Two details worth knowing before you touch the numbers:
+
+- The rate gate runs at **12h**, not 2h, and that is not arbitrary. Measured, the
+  fixed and broken curves both look healthy below 12h — at 4h the broken curve
+  actually buys *more* often (0.75/h vs 0.50/h), because it stalls early and so
+  is never caught mid-session. Only at 12h and beyond do they separate.
+- If an invariant fails after an intentional balance change, fix the economy
+  first. Loosening `LADDER_MIN_PURCHASES_PER_HOUR` until it passes defeats the
+  point of having it.
+
+Run the same check locally before pushing:
+
+```
+npm run simulate -- --hours 12 --check
+```
+
 ## Save format compatibility
 
 `GameState.version` is the save-schema version and is bumped whenever serialization changes. If you add a save field:

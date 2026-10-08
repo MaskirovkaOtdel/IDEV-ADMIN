@@ -53,10 +53,14 @@ jobs:
       - name: Lint, typecheck, test, build
         run: npm run verify
 
-      # Reports measured pacing on every run, so an economy regression shows up
-      # in the log instead of waiting for someone to notice.
+      # Reports measured pacing on every run, and gates on it.
+      #
+      # 12h rather than 2h because that is the shortest horizon where a dead
+      # payout curve is distinguishable from a healthy one: measured 1.33
+      # purchases/h fixed against 0.50/h broken. Below 12h the broken curve still
+      # buys often enough to look fine. Costs about 20s.
       - name: Balance simulation
-        run: npm run simulate -- --hours 2
+        run: npm run simulate -- --hours 12 --check
 
   deploy:
     name: Deploy to Pages

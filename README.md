@@ -71,6 +71,7 @@ self-accelerates enough that play style barely matters, which is the intent.
 | `npm run typecheck` | `tsc -b`, no emit |
 | `npm run lint` | oxlint |
 | `npm run simulate` | Balance simulation report |
+| `npm run simulate -- --check` | Same, but asserts economy invariants and exits non-zero on failure |
 | `npm run check:workflows` | Parse and shape-check the Actions workflow YAML |
 | `npm run check:workflows` | Parse and shape-check the Actions workflow YAML |
 | `npm run verify` | lint + typecheck + workflows + test + build, the gate for PRs |

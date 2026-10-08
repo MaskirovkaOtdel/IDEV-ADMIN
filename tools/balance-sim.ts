@@ -471,6 +471,45 @@ export function formatDuration(seconds: number): string {
 export const TUNING_TARGET_MIN_SECONDS = 45 * 60;
 export const TUNING_TARGET_MAX_SECONDS = 60 * 60;
 
+/**
+ * Minimum permanent purchases per hour the prestige ladder must sustain.
+ *
+ * WHY RATE AND NOT "IS THE LAST PURCHASE RECENT"
+ * ----------------------------------------------
+ * The obvious metric -- how long ago the last purchase happened -- is nearly
+ * blind to the bug this exists to catch. Measured on both curves at 24h:
+ *
+ *   fixed curve   29 purchases, last at 22.8h  ->  4.9% of the horizon idle
+ *   broken curve   7 purchases, last at 12.6h  -> 47.6% idle
+ *
+ * 47.6% versus a 50% threshold means the broken curve slips under it. Worse,
+ * at a 4h horizon the relationship inverts: the broken curve looks *healthier*
+ * on this metric (20.2% idle) than the fixed one (39.0%), because it stops
+ * buying early and so is never caught mid-session. Staleness measures when the
+ * last thing happened, not whether the player is still progressing.
+ *
+ * Purchase rate measures the thing that actually matters -- is the permanent
+ * layer still functioning across the session -- and separates the two curves in
+ * the same direction at every horizon:
+ *
+ *   horizon   fixed    broken
+ *      4h     0.50     0.75     <- broken looks better early
+ *     12h     1.33     0.50
+ *     24h     1.21     0.29
+ *
+ * The rate gate therefore runs at a horizon long enough for the curves to
+ * diverge, which is 12h. Below that the broken curve is still buying enough to
+ * look fine, because it takes a full day for the dead content to become visible.
+ */
+export const LADDER_MIN_PURCHASES_PER_HOUR = 0.75;
+
+/**
+ * Horizon at which the rate gate runs. 12h is the first horizon where the fixed
+ * and broken curves clearly separate (1.33 vs 0.50 purchases/hour) and it costs
+ * about 20 seconds of simulation.
+ */
+export const LADDER_CHECK_MIN_HORIZON_HOURS = 12;
+
 function printProfile(result: SimulationResult): void {
   const p = result.profile;
   console.log(`\n${'='.repeat(72)}`);
@@ -511,6 +550,7 @@ function main(): void {
   const hoursArg = argv.indexOf('--hours');
   const horizonHours = hoursArg >= 0 ? Number(argv[hoursArg + 1]) || 6 : 6;
   const asJson = argv.includes('--json');
+  const asCheck = argv.includes('--check');
 
   if (asJson) {
     const results = PROFILES.map((p) => simulate(p, horizonHours));
@@ -556,6 +596,135 @@ function main(): void {
     console.log(`\n  Total permanent upgrades owned: ${ladder.finalPermOwned}`);
   }
   console.log('');
+
+  if (asCheck) {
+    const { violations, purchases } = runChecks(horizonHours);
+    printCheckReport(horizonHours, violations);
+    if (violations.length === 0) printCheckPass(horizonHours, purchases);
+    if (violations.length > 0) {
+      console.error('\nEconomy invariants failed. If this is an intentional balance');
+      console.error('change, update the tuning target in this file deliberately rather');
+      console.error('than loosening the check until it passes.');
+      process.exitCode = 1;
+    }
+  }
+}
+
+/**
+ * Invariants that must hold for the economy to be playable.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The dead-permanent-upgrade bug shipped with every check green. The first-tier
+ * pacing tests all passed, because the curve was correct at 1e7 and only broke
+ * far beyond anything they looked at. Nothing asserted the two numbers that
+ * actually matter to a player meeting each other: what the upgrades cost, and
+ * what the economy can pay.
+ *
+ * `--check` is the gate. Without it this program only prints, which means a
+ * wildly broken economy produces a table and a green build.
+ *
+ * The late-game assertion is what would have caught that bug. The old curve
+ * bought its 7th permanent upgrade and then stopped for the rest of the session:
+ * the ladder went flat, so the progression had ended while the game still looked
+ * healthy. A floor on ladder growth at the horizon catches exactly that shape.
+ */
+interface Violation {
+  check: string;
+  detail: string;
+}
+
+function runChecks(horizonHours: number): { violations: Violation[]; purchases: number } {
+  const violations: Violation[] = [];
+  const ladderProfile = PROFILES[0];
+
+  // 1. First permanent tier must land in the tuning window, for both profiles.
+  //    Idle is allowed to run slower; the first-tier test already allows 1.5x.
+  for (const profile of PROFILES) {
+    const result = simulate(profile, horizonHours);
+    const t = result.timeToFirstTierSeconds;
+
+    if (t === null) {
+      violations.push({
+        check: `first-tier/${profile.id}`,
+        detail: `never reached within ${horizonHours}h — need ${formatCurrency(FIRST_TIER_UNBANKED)} unbanked lifetime cash`,
+      });
+      continue;
+    }
+
+    const limit = profile.id === 'active' ? TUNING_TARGET_MAX_SECONDS : TUNING_TARGET_MAX_SECONDS * 1.5;
+    if (t > limit) {
+      violations.push({
+        check: `first-tier/${profile.id}`,
+        detail: `${formatDuration(t)} exceeds the ${formatDuration(limit)} ceiling`,
+      });
+    }
+  }
+
+  // 2. The ladder must still be climbing when the horizon ends.
+  //
+  // Not "the player owns N upgrades" — a flat ladder and a finished one look the
+  // same at a fixed N. What matters is that the most recent purchase happened
+  // near the end of the session, which means the progression is still running
+  // and the curve can pay for the rest of the pool.
+  if (horizonHours < LADDER_CHECK_MIN_HORIZON_HOURS) {
+    // Not a failure: too short a session to mean anything. Reported so a green
+    // run at a short horizon is not mistaken for a passing ladder check.
+    console.log(
+      `  SKIP  ladder/rate — horizon ${horizonHours}h is below ` +
+        `${LADDER_CHECK_MIN_HORIZON_HOURS}h. Too short for a dead payout curve to show: ` +
+        'the broken curve still buys often enough early on to look healthy.'
+    );
+    return { violations, purchases: simulatePrestigeLadder(ladderProfile, horizonHours).rows.length };
+  }
+
+  const ladder = simulatePrestigeLadder(ladderProfile, horizonHours);
+  const purchases = ladder.rows.length;
+  const rate = purchases / horizonHours;
+
+  if (purchases === 0) {
+    violations.push({
+      check: 'ladder/rate',
+      detail: `no permanent upgrade bought within ${horizonHours}h — prestige pays nothing`,
+    });
+  } else if (rate < LADDER_MIN_PURCHASES_PER_HOUR) {
+    const lastPurchase = ladder.rows[ladder.rows.length - 1];
+    violations.push({
+      check: 'ladder/rate',
+      detail:
+        `${purchases} purchase(s) over ${horizonHours}h = ${rate.toFixed(2)}/h ` +
+        `(<${LADDER_MIN_PURCHASES_PER_HOUR}/h). Last at ${formatDuration(lastPurchase.atSeconds)}. ` +
+        'The permanent layer has stopped being a progression — usually the payout ' +
+        'curve cannot reach the upgrade costs.',
+    });
+  }
+
+  return { violations, purchases };
+}
+
+function printCheckReport(horizonHours: number, violations: Violation[]): void {
+  console.log(`${'='.repeat(72)}`);
+  console.log(`  Gate — economy invariants (${horizonHours}h horizon)`);
+  console.log('='.repeat(72));
+
+  if (violations.length === 0) {
+    console.log('  PASS  first-tier window held for both profiles');
+    return;
+  }
+
+  console.log(`  ${violations.length} violation(s):`);
+  for (const v of violations) {
+    console.log(`  FAIL  ${v.check}: ${v.detail}`);
+  }
+}
+
+/** Non-fatal summary of what passed, so the report is honest when skipped. */
+function printCheckPass(horizonHours: number, purchases: number): void {
+  if (horizonHours < LADDER_CHECK_MIN_HORIZON_HOURS) return;
+  console.log(
+    `  PASS  ladder sustained ${(purchases / horizonHours).toFixed(2)} purchases/h ` +
+      `(floor ${LADDER_MIN_PURCHASES_PER_HOUR}/h) over ${horizonHours}h`
+  );
 }
 
 main();
