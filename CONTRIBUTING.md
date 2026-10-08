@@ -16,11 +16,13 @@ Note the distinction from a CLA: with a DCO you retain copyright in your contrib
 
 ## Getting set up
 
-Node 22 or newer. `.nvmrc` pins the version CI uses and the workflows read it
-via `node-version-file`, so there is one place to change it. CI deliberately
-runs the *minimum* supported version rather than whatever is newest — testing
-on 22 means a contributor on 26 is always running something at least as new as
-the gate did. `engines` in `package.json` states the floor.
+Node 22 or newer. `.nvmrc` is the single source of truth for the version CI
+runs. The workflows pin `node-version` literally, and `npm run check:workflows`
+fails if any of them disagree with `.nvmrc`, so there is still one place to
+change — enforced by the gate rather than by an action input. CI deliberately
+runs the *minimum* supported version rather than whatever is newest: testing on
+22 means a contributor on 24 or 26 is always running something at least as new
+as the gate did. `engines` in `package.json` states the floor.
 
 ```
 npm install

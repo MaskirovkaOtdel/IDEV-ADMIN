@@ -27,10 +27,12 @@
  *      substitutes the file path when these are missing).
  *   3. Workflows declare explicit `permissions`, so a new workflow cannot
  *      inherit more access than it intends.
- *   4. `release.yml` in particular is a *tag-only* workflow. This is the check
+ *   4. Every `node-version` in every job matches `.nvmrc`, so the Node version
+ *      is enforced from one place without relying on an action input.
+ *   5. `release.yml` in particular is a *tag-only* workflow. This is the check
  *      that would have caught the original symptom most directly: a release
  *      workflow that fires on branch pushes is misconfigured by definition.
- *   5. `.github/dependabot.yml` parses and covers both ecosystems. It fails the
+ *   6. `.github/dependabot.yml` parses and covers both ecosystems. It fails the
  *      same way a workflow does, only quieter: a malformed entry makes
  *      Dependabot stop opening PRs, and silence there is indistinguishable
  *      from having nothing to update.
@@ -73,6 +75,25 @@ const PERMISSIONS_OPTIONAL = new Set<string>();
  * It is checked here for the same reason the workflows are.
  */
 const DEPENDABOT_PATH = join(REPO_ROOT, '.github', 'dependabot.yml');
+
+/**
+ * Single source of truth for the Node version.
+ *
+ * The workflows use a literal `node-version` rather than `node-version-file`.
+ * That is deliberate: `node-version-file` was tried and took the workflow from
+ * green to a run with zero jobs and an unreadable name. The cause was never
+ * conclusively identified -- the YAML parsed cleanly, was valid UTF-8, had no
+ * BOM and no control characters -- so the safer spelling was restored and the
+ * single-source guarantee moved here, where it is enforced on every gate run
+ * instead of being a property of an action input.
+ */
+const NVMRC_PATH = join(REPO_ROOT, '.nvmrc');
+
+function declaredNodeVersion(): string | null {
+  if (!existsSync(NVMRC_PATH)) return null;
+  const value = readFileSync(NVMRC_PATH, 'utf8').trim();
+  return value.length > 0 ? value : null;
+}
 
 /** Ecosystems this repo actually has a lockfile for. */
 const EXPECTED_ECOSYSTEMS = ['npm', 'github-actions'];
@@ -205,6 +226,23 @@ function checkFile(file: string, expectations: { tagOnly: boolean } | undefined)
   for (const [jobName, job] of Object.entries(shape.jobs ?? {})) {
     if (!Array.isArray(job?.steps) || job.steps.length === 0) {
       failures.push({ file, message: `job "${jobName}" has no steps` });
+    }
+  }
+
+  // Node must be pinned to the one version the repo declares.
+  const declared = declaredNodeVersion();
+  if (declared !== null) {
+    for (const [jobName, job] of Object.entries(shape.jobs ?? {})) {
+      for (const step of (job?.steps ?? []) as { with?: { 'node-version'?: unknown } }[]) {
+        const pinned = step.with?.['node-version'];
+        if (pinned === undefined) continue;
+        if (String(pinned) !== declared) {
+          failures.push({
+            file,
+            message: `job "${jobName}" pins node-version ${String(pinned)} but .nvmrc says ${declared}`,
+          });
+        }
+      }
     }
   }
 

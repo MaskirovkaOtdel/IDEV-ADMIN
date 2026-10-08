@@ -1,13 +1,13 @@
 # Verify and deploy.
 #
 # One workflow, one status. Previously CI and Deploy were separate, so a push
-# produced two checks that could disagree Ξ²β‚¬β€ and the deploy check failed three
+# produced two checks that could disagree — and the deploy check failed three
 # times for a Pages-configuration reason that said nothing about code quality.
 # Merging them means a single check means "this commit is good and live".
 #
 # Flow:
-#   1. verify  Ξ²β‚¬β€ typecheck, test, build, balance simulation
-#   2. deploy  Ξ²β‚¬β€ only on main, only after verify passes, published atomically
+#   1. verify  — typecheck, test, build, balance simulation
+#   2. deploy  — only on main, only after verify passes, published atomically
 #
 # The deploy gate matters: auto-deploying without one ships a broken commit to
 # players the moment it is pushed.
@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version-file: '.nvmrc'
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -79,7 +79,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version-file: '.nvmrc'
+          node-version: 22
           cache: npm
 
       - run: npm ci
