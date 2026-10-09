@@ -6,9 +6,10 @@
  * would re-render forever.
  */
 import { useMemo, useState } from 'react';
+import type Decimal from 'break_infinity.js';
 import type { GeneratorId } from '../game/types';
 import { useGameStore, type BuyAmount } from '../game/gameStore';
-import { requireGenDef } from '../game/generators';
+import { GENERATOR_DEFS, requireGenDef } from '../game/generators';
 import {
   cashValueOf,
   costForBulkPurchase,
@@ -34,6 +35,20 @@ export interface GeneratorCardProps {
    * is the only place that can tell a fresh arrival from a restored save.
    */
   justArrived?: boolean;
+}
+
+/**
+ * Percent for a meter label.
+ *
+ * `toFixed(1)` was wrong twice over. It printed "0.0%" for every card on a real
+ * save, and it would print "100.0%" for a bar that is visibly full. Significant
+ * figures instead: 0.0077% reads as "0.0077%", not as nothing.
+ */
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  if (value > 0 && value < 0.01) return `${value.toPrecision(1)}%`;
+  if (value >= 99.95) return '100%';
+  return `${value.toFixed(1)}%`;
 }
 
 export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCardProps) {
@@ -78,41 +93,64 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
   //    converted to cash first, so the bar means "how much of your money this
   //    makes".
   //
-  // 2. ABSOLUTE, NOT RELATIVE. It was scaled against the strongest generator on
-  //    screen, which made the bar a pure ratio: a global multiplier scales every
-  //    card equally, so buying an upgrade moved nothing at all. That is what made
-  //    the meter look broken after a purchase -- the numbers rose and the bars
-  //    did not. The bar is now progress toward a real target, so filling it means
-  //    something and an upgrade visibly pushes it.
+  // 2. THE TARGET HAS TO BE REACHABLE. See the note above the bar.
   const cashValue = useMemo(() => cashValueOf(def.produces, rate), [def.produces, rate]);
 
-  // What one more unit of this generator adds to income.
+  // THE BAR: progress toward affording one more.
   //
-  // Derived by dividing the live rate by the owned count rather than rebuilding
-  // the multiplier stack: `rate` is already `baseRate * owned * mult`, so the
-  // quotient is the per-unit rate with every multiplier applied. Reconstructing
-  // the multipliers separately would mean duplicating the engine's multiplication
-  // order and hoping the two stay in step.
-  const perUnitCash = useMemo(
-    () => (owned > 0 ? cashValueOf(def.produces, rate.div(owned)) : ZERO),
-    [def.produces, owned, rate]
-  );
-
-  const incomePerSec = useGameStore((s) => s.transient.production.cashPerSec);
-
-  // Progress toward a doubling: 100% means buying one more would double income.
+  // THREE TARGETS, THREE REJECTIONS
+  // --------------------------------
+  // This meter has now been wrong twice, both times because I picked a target
+  // that reads well in theory and collapses against a real save.
   //
-  // An absolute target rather than a comparison to the best card, so a global
-  // multiplier moves every bar instead of leaving them all fixed. Doubling is the
-  // threshold because it holds meaning at every scale -- early game it is seconds
-  // away, late game it is hours, and the bar stays honest throughout.
-  const secondsToDouble = useMemo(() => {
-    if (perUnitCash.lessThanOrEqualTo(ZERO) || incomePerSec.lessThanOrEqualTo(ZERO)) return 0;
-    const ratio = Number(incomePerSec.div(perUnitCash).toString());
-    return Number.isFinite(ratio) ? ratio : 0;
-  }, [incomePerSec, perUnitCash]);
+  //   v0.4.0  share of the strongest generator. A ratio, so a global multiplier
+  //           scaled every card equally and moved nothing.
+  //   v0.4.1  progress toward doubling income. Absolute and well intentioned, and
+  //           it rendered "0.0%" on all seven cards of a real save. Income there
+  //           was 3.23M/s while the best generator added 250/s -- one purchase was
+  //           0.0077% of income, so 100% was 129x out of reach. A target only
+  //           counts if a purchase can actually move it.
+  //
+  // Affordability survives that test. cash / cost is bounded by 1 by definition,
+  // so it is non-zero whenever you are saving and fills to 100% exactly when the
+  // button becomes enabled. It answers the question the player is actually asking
+  // -- "am I close to another?" -- and it moves on every tick and every purchase.
+  const meterPct = useMemo(() => {
+    if (owned === 0) return 0;
+    // Cost of ONE more unit, independent of the ×1/×10/×100/MAX toggle. The bar is
+    // about the next hire, not the size of the current selection, so switching
+    // quantity must not rescale it.
+    const nextCost = costForBulkPurchase(def.baseCost, growth, owned, 1, discount);
+    if (nextCost.lessThanOrEqualTo(ZERO)) return 100;
+    const ratio = Number(cash.div(nextCost).toString());
+    if (!Number.isFinite(ratio)) return 0;
+    return Math.max(0, Math.min(100, ratio * 100));
+  }, [cash, def.baseCost, discount, growth, owned]);
 
-  const meterPct = secondsToDouble > 0 ? Math.min(100, (1 / secondsToDouble) * 100) : 0;
+  // THE LABEL: this generator's share of what the team produces.
+  //
+  // Deliberately NOT a share of `cashPerSec`. That figure includes revenue from
+  // billing out stockpiled LoC and Coffee, which is unbounded and unrelated to
+  // hiring -- in a real save it was 99.8% of income, so a share of it pinned every
+  // card near 0.01% and said nothing about which generator was worth buying.
+  //
+  // Summing cash-equivalent output across the team instead answers the useful
+  // question: is this generator pulling its weight? K8s Cluster earns ~86% of the
+  // team's output from 40 units, which is exactly the comparison the player wants.
+  const teamSharePct = useGameStore((s) => {
+    const per = s.transient.production.perGenerator;
+    let total = 0;
+    let mine = 0;
+    for (const [id, value] of Object.entries(per)) {
+      const def = GENERATOR_DEFS.find((d) => d.id === id);
+      if (!def) continue;
+      const worth = Number(cashValueOf(def.produces, value as Decimal).toString());
+      if (!Number.isFinite(worth)) continue;
+      total += worth;
+      if (id === generatorId) mine = worth;
+    }
+    return total > 0 ? (mine / total) * 100 : 0;
+  });
 
   return (
     <article
@@ -135,10 +173,15 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
         <div className={`gen-meter ${cashValue.gt(ZERO) ? '' : 'is-idle'}`} role="presentation">
           <div className="gen-meter-fill" style={{ width: `${meterPct}%` }} />
         </div>
-        <span className="meter-label">
-          {cashValue.gt(ZERO) ? `${meterPct.toFixed(1)}% to 2× income` : 'idle'}
+        <span className="meter-label" title="Share of what your team produces">
+          {cashValue.gt(ZERO)
+            ? `${formatPercent(teamSharePct)} of team`
+            : 'not producing'}
         </span>
       </div>
+      <p className="meter-hint">
+        {meterPct >= 100 ? 'ready to hire another' : `${formatPercent(meterPct)} to the next hire`}
+      </p>
 
       <dl className="card-stats">
         <div>

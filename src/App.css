@@ -479,6 +479,16 @@
   white-space: nowrap;
 }
 
+/* Second line: what the bar is counting toward. Separate from the label because
+   they answer different questions -- the label ranks this generator against the
+   rest of the team, the hint says whether the bar is nearly full. */
+.meter-hint {
+  margin: 0.3rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-faint);
+}
+
 /* Secondary figure, e.g. the cash a LoC rate is worth. */
 .stat-aside {
   color: var(--text-faint);

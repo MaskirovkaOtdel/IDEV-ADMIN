@@ -21,6 +21,7 @@ import { REVENUE_PER_COFFEE, REVENUE_PER_LOC } from '../game/generators';
 import { useGameStore } from '../game/gameStore';
 import { saveGameState } from '../game/storage';
 import { createInitialState } from '../game/serialize';
+import type { GeneratorId } from '../game/types';
 
 /** The v0.4.0 formula, kept to prove the new one differs on real numbers. */
 function oldMeterPct(rate: number, strongest: number): number {
@@ -116,24 +117,46 @@ describe('the rendered card uses the cash-denominated meter', () => {
       title: card.querySelector('.card-title')?.textContent ?? '',
       fill: card.querySelector<HTMLElement>('.gen-meter-fill'),
       label: card.querySelector('.meter-label')?.textContent ?? '',
+      hint: card.querySelector('.meter-hint')?.textContent ?? '',
       production: card.querySelector('.card-stats dd')?.textContent ?? '',
     }));
   }
 
-  it('gives a cash generator a different bar than a larger raw LoC rate', async () => {
-    // Senior Dev produces less raw than nothing else here, but Code Review's
-    // 24.75 LoC/s is worth 1.24 cash/s. If the bar were still raw, the LoC card
-    // would draw longer.
+  it('ranks generators by what they earn, not by raw output', async () => {
+    // Two generators worth EXACTLY the same income, with wildly different raw
+    // rates: Senior Dev at 25 units is 30 cash/s, Linter at 100 units is 600 LoC/s
+    // which bills at 0.05 to the same 30 cash/s.
+    //
+    // Under the v0.4.0 formula the Linter card drew a bar 20x longer than the
+    // Senior Dev card despite being worth precisely the same. Under cash value
+    // they must read as equals.
     const cards = await renderCards((s) => {
       s.generators.juniorDev = { owned: 10, unlocked: true };
-      s.generators.seniorDev = { owned: 1, unlocked: true };
-      s.generators.codeReview = { owned: 30, unlocked: true };
+      s.generators.seniorDev = { owned: 25, unlocked: true };
+      s.generators.linter = { owned: 100, unlocked: true };
     });
 
-    const width = (name: string) =>
-      Number.parseFloat(cards.find((c) => c.title === name)?.fill?.style.width ?? '0');
+    const share = (name: string) =>
+      Number.parseFloat(cards.find((c) => c.title === name)?.label ?? '0');
 
-    expect(width('Senior Dev')).toBeGreaterThan(width('Code Review'));
+    // Same earnings, so the same share of the team.
+    expect(share('Linter')).toBeCloseTo(share('Senior Dev'), 1);
+
+    // And the raw-rate ratio that used to dominate: 600 vs 30.
+    expect(600 / 30).toBe(20);
+  });
+
+  it('shows affordability on the bar, bounded by 100%', async () => {
+    // With 1e9 cash every generator is instantly affordable, so the bar pins to
+    // 100. That is the intended ceiling, not a bug -- but it does mean the bar
+    // cannot rank cards, which is why the label carries the share.
+    const cards = await renderCards((s) => {
+      s.generators.juniorDev = { owned: 10, unlocked: true };
+    });
+
+    const fill = cards.find((c) => c.title === 'Junior Dev')?.fill?.style.width ?? '';
+    expect(fill).toBe('100%');
+    expect(cards.find((c) => c.title === 'Junior Dev')?.hint).toBe('ready to hire another');
   });
 
   it('states the cash value of a non-cash generator', async () => {
@@ -161,7 +184,211 @@ describe('the rendered card uses the cash-denominated meter', () => {
       s.generators.juniorDev = { owned: 10, unlocked: true };
     });
 
-    expect(cards.find((c) => c.title === 'Junior Dev')?.label).toMatch(/to 2. income/);
+    expect(cards.find((c) => c.title === 'Junior Dev')?.label).toMatch(/of team/);
+    expect(cards.find((c) => c.title === 'Junior Dev')?.hint).toMatch(/to the next hire|ready to hire/);
+  });
+});
+
+describe('the meter survives a late-game save', () => {
+  // THE REGRESSION THIS EXISTS FOR
+  // -------------------------------
+  // v0.4.1 set the bar to "progress toward doubling income". Against a real save
+  // that rendered 0.0% on all seven cards: income was 3.23M/s while the best
+  // generator added 250/s, so one purchase was 0.0077% of income and 100% was 129x
+  // out of reach. A meter test that only used small numbers could not see it.
+  //
+  // These use the actual scale of that save. Every figure below is taken from it.
+
+  const LATE = {
+    cash: dec(223_000_000),
+    loc: dec(2_510_000),
+    coffee: dec(2_960_000),
+    owned: { juniorDev: 140, seniorDev: 100, codeReview: 100, linter: 90, testSuite: 60, ciPipeline: 50, k8sCluster: 40 },
+  };
+
+  async function renderLate() {
+    useGameStore.getState().hardReset();
+    const state = createInitialState();
+    state.resources.cash = LATE.cash;
+    state.resources.linesOfCode = LATE.loc;
+    state.resources.coffee = LATE.coffee;
+    state.resources.lifetimeCash = dec(3.79e9);
+    for (const [id, n] of Object.entries(LATE.owned)) {
+      state.generators[id as GeneratorId] = { owned: n, unlocked: true };
+    }
+    // The 11 upgrades that save owned.
+    state.upgrades.purchased = [
+      'codeMaster', 'pairProgramming', 'styleGuide', 'freelanceContracts', 'testObsession',
+      'automatedLinting', 'continuousIntegration', 'seniorMentor', 'aiCopilot',
+      'quantumServer', 'autonomousAgent',
+    ];
+    saveGameState(state);
+
+    render(<App />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    return [...document.querySelectorAll('.generator-card')].map((card) => ({
+      title: card.querySelector('.card-title')?.textContent ?? '',
+      width: card.querySelector<HTMLElement>('.gen-meter-fill')?.style.width ?? '0%',
+      label: card.querySelector('.meter-label')?.textContent ?? '',
+      hint: card.querySelector('.meter-hint')?.textContent ?? '',
+    }));
+  }
+
+  it('never renders a bare 0.0%', async () => {
+    const cards = await renderLate();
+    expect(cards.length).toBeGreaterThan(3);
+
+    for (const card of cards) {
+      expect(card.width, `${card.title} bar collapsed`).not.toBe('0%');
+      expect(card.label, `${card.title} label is empty`).not.toBe('');
+      // The specific failure: toFixed(1) rounding a real value down to nothing.
+      expect(card.label, `${card.title} label reads 0.0%`).not.toContain('0.0%');
+    }
+  });
+
+  it('reports a real share of team output, and ranks the cards', async () => {
+    const cards = await renderLate();
+    const share = (name: string) => {
+      const text = cards.find((c) => c.title === name)?.label ?? '';
+      return Number.parseFloat(text);
+    };
+
+    // K8s Cluster produced 10K cash/s from 40 units; Code Review 348 LoC/s from
+    // 100, which is worth 17.4 cash/s. K8s must dominate.
+    expect(share('K8s Cluster')).toBeGreaterThan(share('Code Review'));
+    expect(share('K8s Cluster')).toBeGreaterThan(50);
+  });
+
+  it('reflects cash on hand rather than ranking the cards', async () => {
+    // Guards against the v0.4.0 formula, which scaled against the strongest
+    // generator on screen. That made the top card always 100% no matter how poor
+    // the player was: a "ratio" bar cannot report scarcity.
+    //
+    // Broke by patch B, which restores raw/strongest and passes every other test
+    // in this file -- the top card stays full, so nothing else notices.
+    useGameStore.getState().hardReset();
+    const state = createInitialState();
+    state.resources.cash = dec(1); // effectively broke
+    state.resources.lifetimeCash = dec(1);
+    state.generators.juniorDev = { owned: 100, unlocked: true };
+    state.generators.seniorDev = { owned: 100, unlocked: true };
+    saveGameState(state);
+
+    render(<App />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    const widths = [...document.querySelectorAll('.generator-card .gen-meter-fill')].map(
+      (el) => Number.parseFloat((el as HTMLElement).style.width)
+    );
+    expect(widths.length).toBeGreaterThan(1);
+    // With 1 cash against costs in the hundreds, nothing is affordable.
+    for (const w of widths) expect(w).toBeLessThan(5);
+  });
+
+  it('formats a tiny share without collapsing it to 0.0%', async () => {
+    // Guards the `formatPercent` rounding directly. The late-game cards all land
+    // above 0.01%, so they never exercised this -- the collapse happened on the
+    // old label, which was derived from income rather than from team share.
+    // Broke by patch C, which restores toFixed(1).
+    useGameStore.getState().hardReset();
+    const state = createInitialState();
+    state.resources.cash = dec(1e6);
+    state.resources.lifetimeCash = dec(1e6);
+    // Linter at a million units produces 6M LoC/s = 300K cash/s, dwarfing the two
+    // cash generators. Their share is a genuine sliver, not zero.
+    state.generators.juniorDev = { owned: 1, unlocked: true };
+    state.generators.seniorDev = { owned: 1, unlocked: true };
+    state.generators.linter = { owned: 1_000_000, unlocked: true };
+    saveGameState(state);
+
+    render(<App />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    const labelFor = (name: string) =>
+      [...document.querySelectorAll('.generator-card')]
+        .find((c) => c.querySelector('.card-title')?.textContent === name)
+        ?.querySelector('.meter-label')?.textContent ?? '';
+
+    const junior = labelFor('Junior Dev');
+    expect(Number.parseFloat(junior), `label was "${junior}"`).toBeGreaterThan(0);
+    expect(junior).not.toContain('0.0%');
+    expect(junior).not.toBe('0%');
+  });
+
+  it('is stable across the buy-quantity toggle', async () => {
+    // The bar tracks the next single hire, so choosing MAX must not rescale it.
+    // Broke by patch E, which measures against the whole selected quantity.
+    useGameStore.getState().hardReset();
+    const state = createInitialState();
+    // Cash is set just UNDER the cost of one more Junior Dev at 40 owned
+    // (10 * 1.12^40 = 930), so the bar sits near 54%.
+    //
+    // Getting this number wrong is what made the first version of this test
+    // vacuous: at 1000 cash the ratio was 107%, so the bar pinned at 100% under
+    // BOTH the correct and the broken implementation and the assertion passed
+    // regardless. A test needs a value where the two differ.
+    state.resources.cash = dec(500);
+    state.resources.lifetimeCash = dec(500);
+    state.generators.juniorDev = { owned: 40, unlocked: true };
+    saveGameState(state);
+
+    render(<App />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    const widthOf = () =>
+      document.querySelector<HTMLElement>('.generator-card .gen-meter-fill')?.style.width ?? '0%';
+
+    const before = widthOf();
+    expect(
+      Number.parseFloat(before),
+      'bar should be partly full for this test to mean anything'
+    ).toBeGreaterThan(5);
+    expect(Number.parseFloat(before)).toBeLessThan(95);
+
+    // Sanity: the MAX button must actually exist, or this test proves nothing.
+    const max = [...document.querySelectorAll('.chip-button')].find(
+      (b) => b.textContent?.trim().toUpperCase() === 'MAX'
+    ) as HTMLButtonElement | undefined;
+    expect(max, 'MAX toggle not found').toBeTruthy();
+
+    const labelBefore = document.querySelector('.generator-card button.btn')?.textContent ?? '';
+    await act(async () => {
+      max!.click();
+    });
+    // The quantity really changed, or the assertion below is vacuous.
+    const labelAfter = document.querySelector('.generator-card button.btn')?.textContent ?? '';
+    expect(labelAfter, 'quantity did not change').not.toBe(labelBefore);
+    expect(labelAfter).toContain('MAX');
+
+    expect(widthOf()).toBe(before);
+
+    // And it must STILL be right on the next tick.
+    //
+    // This is where a quantity-sensitive bar actually breaks. The memo's
+    // dependencies exclude the quantity, so selecting MAX does not recompute it:
+    // the bar looks correct right after the click and then, the moment cash ticks
+    // and the memo re-runs, it silently resizes to the cost of the whole MAX
+    // purchase. Checking only the instant after the click passes for the broken
+    // implementation -- which is what happened the first time.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+
+    // Compared as a band, not an exact string: cash is ticking upward the whole
+    // time, so the correct bar drifts slightly on its own. A quantity-sensitive
+    // bar jumps to 100%, which no amount of drift explains.
+    const afterTick = Number.parseFloat(widthOf());
+    expect(afterTick).toBeGreaterThan(Number.parseFloat(before) - 2);
+    expect(afterTick).toBeLessThan(Number.parseFloat(before) + 2);
   });
 });
 
