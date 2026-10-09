@@ -94,6 +94,16 @@ export interface SimulationResult {
   finalOwned: number;
   upgradesPurchased: number;
   upgradesTotal: number;
+  /**
+   * When the last run upgrade was bought, or null if none was.
+   *
+   * Distinct from `upgradesPurchased` on purpose: "bought 27 of 27" is equally true
+   * of a tree exhausted in the first minute and one exhausted in the last. The
+   * timestamp is what says whether the panel went dead.
+   */
+  lastUpgradeAtSeconds: number | null;
+  /** Units owned per generator at the end, for checking upgrade gates are reachable. */
+  perGeneratorOwned: Record<string, number>;
   /** Cash production per second at the end. */
   finalCashPerSec: number;
   totalPrestiges: number;
@@ -376,6 +386,17 @@ export function simulate(profile: Profile, horizonHours: number): SimulationResu
     finalOwned: GENERATOR_DEFS.reduce((sum, d) => sum + state.generators[d.id].owned, 0),
     upgradesPurchased: state.upgrades.purchased.length,
     upgradesTotal: UPGRADE_DEFS.length,
+    perGeneratorOwned: Object.fromEntries(
+      GENERATOR_DEFS.map((d) => [d.id, state.generators[d.id].owned])
+    ),
+    // From the milestones rather than a separate counter: they are recorded in
+    // purchase order as the loop walks, so the last `upgrade` entry is the last
+    // purchase. Deriving it here avoids a second bookkeeping path that could
+    // disagree with the events it is meant to summarise.
+    lastUpgradeAtSeconds: (() => {
+      const last = [...milestones].reverse().find((m) => m.kind === 'upgrade');
+      return last ? last.atSeconds : null;
+    })(),
     finalCashPerSec: Number(production.perResource.cash.toString()),
     totalPrestiges,
   };
@@ -502,6 +523,39 @@ export const TUNING_TARGET_MAX_SECONDS = 60 * 60;
  * look fine, because it takes a full day for the dead content to become visible.
  */
 export const LADDER_MIN_PURCHASES_PER_HOUR = 0.75;
+
+/**
+ * Every generator-gated run upgrade must become reachable.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS REPLACES THE GATE I TRIED TO WRITE FIRST
+ * ---------------------------------------------------------------------------
+ * The complaint was real: a player owned 12/12 upgrades and the panel then read
+ * "Nothing to buy here right now" for the rest of a nine-hour session. I assumed
+ * that was a pacing defect in the tree and wrote three gates for it. All three
+ * passed on the tree that was actually broken:
+ *
+ *   session horizon  "the tree must survive half a 12h session" -- fired on the
+ *                    HEALTHY 27-upgrade tree, because a run is supposed to end
+ *                    long before a long session does.
+ *   absolute floor   "the tree must last 45 minutes" -- 12 upgrades exhausted at
+ *                    1h08m and 27 exhausted at 1h10m. Both pass. Measured, not
+ *                    assumed.
+ *   first-tier margin "exhaustion must land 10m after the first permanent tier" --
+ *                    12 exhausted 18.7m after it, 27 exhausted 20.7m after. Both
+ *                    pass.
+ *
+ * The conclusion is that exhaustion TIME is bounded by the economy, not by how many
+ * upgrades exist. The sim buys optimally and runs out of things to spend on at the
+ * moment the money curve says it should, whether the tree holds 12 or 27. A fourth
+ * variant of a check that cannot fail would be the same mistake four times over.
+ *
+ * So this gate asserts the property that is genuinely new and genuinely at risk:
+ * that an upgrade gated behind a generator count is not permanently unreachable.
+ * A mistyped threshold is silent, ships, and produces content nobody can ever buy.
+ * That is checkable, and the 27-upgrade tree would fail it if any gate were wrong.
+ */
+export const RUN_GATED_CHECK_MIN_HORIZON_HOURS = 2;
 
 /**
  * Horizon at which the rate gate runs. 12h is the first horizon where the fixed
@@ -697,6 +751,41 @@ function runChecks(horizonHours: number): { violations: Violation[]; purchases: 
         'The permanent layer has stopped being a progression — usually the payout ' +
         'curve cannot reach the upgrade costs.',
     });
+  }
+
+  // 3. No run upgrade may be permanently unreachable.
+  //
+  // Every generator-gated upgrade has to become buyable within the horizon. A gate
+  // set above what the economy can deliver is silent: it ships, it renders, and no
+  // player can ever claim it.
+  if (horizonHours >= RUN_GATED_CHECK_MIN_HORIZON_HOURS) {
+    const run = simulate(ladderProfile, horizonHours);
+    const owned = run.perGeneratorOwned;
+
+    const stranded: string[] = [];
+    for (const def of UPGRADE_DEFS) {
+      const req = def.requires;
+      if (!req?.generatorId || req.owned === undefined) continue;
+      const have = owned[req.generatorId] ?? 0;
+      if (have < req.owned) {
+        stranded.push(`${def.name} (needs ${req.owned} x ${req.generatorId}, reached ${have})`);
+      }
+    }
+
+    if (stranded.length > 0) {
+      violations.push({
+        check: 'run-tree/reachable',
+        detail:
+          `${stranded.length} generator-gated upgrade(s) unreachable after ${horizonHours}h: ` +
+          `${stranded.join('; ')}. Either the threshold is above what the curve delivers, ` +
+          'or the gate should be on cash instead.',
+      });
+    }
+  } else {
+    console.log(
+      `  SKIP  run-tree/reachable - horizon ${horizonHours}h is below ` +
+        `${RUN_GATED_CHECK_MIN_HORIZON_HOURS}h.`
+    );
   }
 
   return { violations, purchases };

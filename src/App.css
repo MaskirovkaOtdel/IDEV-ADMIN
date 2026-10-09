@@ -1173,6 +1173,15 @@
   outline-offset: 2px;
 }
 
+/* Locked-upgrade preview: why it is not buyable yet, in the game's own words. */
+.upgrade-locked-reason {
+  margin: 0.45rem 0 0;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .chip-group {
   display: flex;
   flex: 0 0 auto;

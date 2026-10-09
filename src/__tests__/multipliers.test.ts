@@ -97,7 +97,18 @@ describe('computeMultipliers – per-kind handling', () => {
   });
 
   it('every upgrade effect kind is handled', () => {
-    const handled = new Set(['globalMult', 'resourceMult', 'generatorMult', 'revenueMult', 'costDiscount', 'costGrowthDelta']);
+    // `offlineEfficiency` was already declared in UpgradeEffectKind and already
+    // handled by computeMultipliers; this list was simply never updated when it was
+    // added, so it only surfaced when an upgrade finally used it.
+    const handled = new Set([
+      'globalMult',
+      'resourceMult',
+      'generatorMult',
+      'revenueMult',
+      'costDiscount',
+      'costGrowthDelta',
+      'offlineEfficiency',
+    ]);
     for (const def of UPGRADE_DEFS) {
       for (const effect of def.effects) {
         expect(handled.has(effect.kind)).toBe(true);
