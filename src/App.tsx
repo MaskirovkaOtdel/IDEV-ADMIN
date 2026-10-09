@@ -22,6 +22,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout } from './ui/Layout';
 import { ConfirmResetModal } from './ui/ConfirmResetModal';
 import { OfflineReportModal } from './ui/OfflineReportModal';
+import { SettingsModal } from './ui/SettingsModal';
+import { motionAllowed, useSettings } from './game/settings';
 import { LiveRegion } from './components/LiveRegion';
 import { DebugPanel } from './components/DebugPanel';
 import { LoadingIndicator } from './ui/LoadingIndicator';
@@ -41,7 +43,10 @@ function GameRuntime() {
   const catchUp = useGameStore((s) => s.catchUp);
   const save = useGameStore((s) => s.save);
 
-  useAutosave();
+  // Autosave interval comes from settings, so the toggle is real rather than
+  // decorative. `useAutosave` depends on it, so changing it tears down the old
+  // timer and starts a new one.
+  useAutosave(useSettings().autosaveSeconds * 1000);
   // The loop pauses itself while the tab is hidden; this handler credits the
   // hidden span once, at offline efficiency, when the player comes back.
   useGameLoop(tick);
@@ -78,23 +83,25 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [burning, setBurning] = useState(false);
   const hydratedRef = useRef(false);
 
-  // ?motion=force — opt in to the event effects even when the OS asks for
-  // reduced motion.
+  // Animation preference: `?motion=force` beats the saved setting, and 'system'
+  // defers to the OS. Default is therefore "whatever the OS asks for", which is
+  // the opposite of what a boolean defaulting to true would have done.
   //
-  // Set as a data attribute on <html> rather than a React state so the stylesheet
-  // can key off it with a plain selector and no re-render on load. Read once:
-  // changing it mid-session would leave animations in a half-enabled state.
-  //
-  // This deliberately overrides an accessibility preference, so it is never on by
-  // default and only ever applies to the event layer. If you have reduced motion
-  // enabled because it causes you discomfort, leave this off.
+  // Set as a data attribute on <html> rather than React state so the stylesheet
+  // can key off it with a plain selector. Subscribed, so changing it in settings
+  // takes effect immediately rather than needing a reload.
+  const motionPreference = useSettings().motion;
   useEffect(() => {
-    const forced = new URLSearchParams(window.location.search).get('motion') === 'force';
-    if (forced) document.documentElement.dataset.motion = 'force';
-  }, []);
+    if (motionAllowed(window.location.search, undefined, motionPreference)) {
+      document.documentElement.dataset.motion = 'force';
+    } else {
+      delete document.documentElement.dataset.motion;
+    }
+  }, [motionPreference]);
 
   // Hydrate exactly once, even under React 19 StrictMode double-invocation.
   useEffect(() => {
@@ -128,6 +135,15 @@ export default function App() {
     }
   }, [performPrestige, prestigeCount]);
 
+  // A reset destroys a run. With the confirmation switched off in settings it
+  // happens immediately -- which is why the default is on, and why that setting's
+  // own copy recommends leaving it on.
+  const confirmPrestige = useSettings().confirmPrestige;
+  const requestPrestige = useCallback(() => {
+    if (confirmPrestige) setConfirmResetOpen(true);
+    else onConfirmPrestige();
+  }, [confirmPrestige, onConfirmPrestige]);
+
   // Clear the burn after the sweep has run. A timer rather than a CSS class
   // left on permanently, so re-renders cannot re-arm the animation.
   useEffect(() => {
@@ -147,7 +163,8 @@ export default function App() {
   return (
     <div className="app">
       <Layout
-        onOpenPrestige={() => setConfirmResetOpen(true)}
+        onOpenPrestige={requestPrestige}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenDebug={DEV_TOOLS_ENABLED ? () => setDebugOpen(true) : undefined}
         burning={burning}
       />
@@ -158,6 +175,7 @@ export default function App() {
       <LiveRegion />
 
       <OfflineReportModal />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ConfirmResetModal
         isOpen={confirmResetOpen}
         onClose={() => setConfirmResetOpen(false)}

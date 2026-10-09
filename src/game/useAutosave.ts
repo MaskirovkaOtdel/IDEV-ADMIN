@@ -21,6 +21,11 @@ export function useAutosave(intervalMs = DEFAULT_AUTOSAVE_MS): void {
       useGameStore.getState().save();
     };
 
+    // A reload after an interval change must not leave the old timer running.
+    // `useEffect` re-runs on `intervalMs`, and the cleanup clears the previous
+    // interval and saves, so this is already handled -- but the dependency is
+    // load-bearing and worth stating, because removing it would leak a timer per
+    // settings change.
     const interval = setInterval(save, intervalMs);
     const onVisibility = () => {
       if (document.hidden) save();

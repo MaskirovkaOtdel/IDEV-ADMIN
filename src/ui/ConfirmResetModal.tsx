@@ -4,6 +4,7 @@
  * Explicitly lists what is kept and what is wiped, because a prestige that eats
  * an afternoon of progress needs to be a conscious decision.
  */
+import { useRef } from 'react';
 import { useGameStore } from '../game/gameStore';
 import {
   computeTechDebtGained,
@@ -13,6 +14,7 @@ import {
 } from '../game/prestige';
 import { PERM_UPGRADE_DEFS } from '../game/permUpgrades';
 import { formatDecimal } from '../game/formulas';
+import { useDialog } from './useDialog';
 
 export interface ConfirmResetModalProps {
   isOpen: boolean;
@@ -25,6 +27,20 @@ export function ConfirmResetModal({ isOpen, onClose, onConfirm }: ConfirmResetMo
   const lifetimeCash = gameState.resources.lifetimeCash;
   const prestige = gameState.prestige;
   const permOwned = prestige.permanentUpgrades;
+
+  const windowRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // No Escape, and no backdrop dismissal. This dialog asks before destroying a
+  // run, and the answer should be typed rather than stumbled into — the two
+  // cheapest actions available with a keyboard should not be "destroy progress".
+  useDialog({
+    open: isOpen,
+    onClose,
+    windowRef,
+    initialFocus: cancelRef,
+    closeOnEscape: false,
+  });
 
   // Payout is computed from cash earned *since the last reset*, never the raw
   // lifetime total — otherwise a reset would let the player re-claim the same
@@ -40,10 +56,17 @@ export function ConfirmResetModal({ isOpen, onClose, onConfirm }: ConfirmResetMo
   const permCount = Object.values(permOwned).reduce((sum, n) => sum + n, 0);
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="modal-window" onClick={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        ref={windowRef}
+        className="modal-window"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-reset-title"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="modal-header">
-          <h2>Reset the run?</h2>
+          <h2 id="confirm-reset-title">Reset the run?</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -110,7 +133,7 @@ export function ConfirmResetModal({ isOpen, onClose, onConfirm }: ConfirmResetMo
         </section>
 
         <footer className="modal-footer">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-ghost" ref={cancelRef} onClick={onClose}>
             Cancel
           </button>
           <button type="button" className="btn btn-danger" onClick={onConfirm}>

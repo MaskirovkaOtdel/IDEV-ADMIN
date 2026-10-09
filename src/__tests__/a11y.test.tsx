@@ -26,6 +26,13 @@ import { clearSaveData, KEY_CURRENT, saveGameState } from '../game/storage';
 import { createInitialState } from '../game/serialize';
 import { dec } from '../game/decimal';
 import { MIN_OFFLINE_SECONDS_FOR_REPORT } from '../game/offline';
+import {
+  DEFAULT_SETTINGS,
+  KEY_SETTINGS,
+  motionAllowed,
+  updateSettings,
+  __resetSettingsForTest,
+} from '../game/settings';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -59,12 +66,16 @@ const liveRegion = () => document.querySelector('[role="status"][aria-live="poli
 
 beforeEach(() => {
   clearSaveData();
+  localStorage.removeItem(KEY_SETTINGS);
+  __resetSettingsForTest();
   useGameStore.getState().hardReset();
   delete document.documentElement.dataset.motion;
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem(KEY_SETTINGS);
+  __resetSettingsForTest();
   delete document.documentElement.dataset.motion;
 });
 
@@ -292,15 +303,68 @@ describe('the welcome-back modal is a real dialog', () => {
   });
 });
 
-describe('?motion=force', () => {
-  it('is off by default', () => {
-    // It overrides an accessibility preference, so it must never be implicit.
-    render(<App />);
-    expect(document.documentElement.dataset.motion).toBeUndefined();
+describe('motion preference', () => {
+  /**
+   * jsdom has no real `prefers-reduced-motion`, so it is stubbed. This is the whole
+   * point of the tri-state design: the default has to be *derived* from the OS,
+   * and that derivation cannot be asserted without controlling the OS answer.
+   */
+  function stubPrefersReduced(matches: boolean) {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('prefers-reduced-motion') ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
   });
 
-  it('sets the attribute when the query parameter asks for it', async () => {
-    const original = window.location.search;
+  it('defaults to following the system, not overriding it', () => {
+    // A boolean defaulting to true would set data-motion for everybody, silently
+    // overriding the OS accessibility preference. That is the bug the tri-state
+    // exists to prevent.
+    expect(DEFAULT_SETTINGS.motion).toBe('system');
+  });
+
+  it('respects a system that asks for reduced motion', async () => {
+    const restore = stubPrefersReduced(true);
+    try {
+      render(<App />);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(document.documentElement.dataset.motion).toBeUndefined();
+    } finally {
+      restore();
+    }
+  });
+
+  it('plays the effects when the system does not ask for reduced motion', async () => {
+    const restore = stubPrefersReduced(false);
+    try {
+      render(<App />);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(document.documentElement.dataset.motion).toBe('force');
+    } finally {
+      restore();
+    }
+  });
+
+  it('?motion=force overrides a system that asked for reduced motion', async () => {
+    const restore = stubPrefersReduced(true);
     window.history.replaceState({}, '', '/?motion=force');
     try {
       render(<App />);
@@ -309,16 +373,14 @@ describe('?motion=force', () => {
       });
       expect(document.documentElement.dataset.motion).toBe('force');
     } finally {
-      window.history.replaceState({}, '', original || '/');
+      restore();
     }
   });
 
-  it('is styled to restore only the event layer, not every transition', () => {
-    // Read from source rather than the bundle: this asserts intent, that the
-    // override is scoped, and does not depend on the minifier keeping selectors.
-    const css = document.documentElement;
-    expect(css).toBeTruthy();
-    // The actual rule lives in App.css; see motion.test.ts for the built-file
-    // assertions on effect sizing.
+  it('?motion=off overrides everything, including "always on"', () => {
+    updateSettings({ motion: 'always' });
+    expect(motionAllowed('?motion=off', false)).toBe(false);
+    // The URL is a shareable override and must win over the saved preference.
+    expect(motionAllowed('?motion=force', true, 'never')).toBe(true);
   });
 });

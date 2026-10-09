@@ -10,9 +10,10 @@
  * Import is validated by the store before it touches live state, so a bad paste
  * cannot corrupt an existing save.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useGameStore } from '../game/gameStore';
 import { formatDuration } from '../game/formulas';
+import { useDialog } from './useDialog';
 
 export interface SaveManagerProps {
   isOpen: boolean;
@@ -24,6 +25,13 @@ export function SaveManager({ isOpen, onClose }: SaveManagerProps) {
   const loadFromString = useGameStore((s) => s.loadFromString);
   const save = useGameStore((s) => s.save);
   const gameState = useGameStore((s) => s.gameState);
+
+  const windowRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Escape dismisses, but the backdrop does not: a stray click on the import
+  // textarea would otherwise close the dialog and lose whatever was pasted.
+  useDialog({ open: isOpen, onClose, windowRef, initialFocus: closeRef });
 
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -54,11 +62,24 @@ export function SaveManager({ isOpen, onClose }: SaveManagerProps) {
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="modal-window" onClick={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        ref={windowRef}
+        className="modal-window"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="save-manager-title"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="modal-header">
-          <h2>Save data</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+          <h2 id="save-manager-title">Save data</h2>
+          <button
+            type="button"
+            className="modal-close"
+            ref={closeRef}
+            onClick={onClose}
+            aria-label="Close"
+          >
             ×
           </button>
         </header>

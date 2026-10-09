@@ -1078,6 +1078,140 @@
   border: 0;
 }
 
+/* --- settings ------------------------------------------------------------ */
+
+.modal-window-wide {
+  max-width: 34rem;
+}
+
+.setting-group {
+  margin: 0 0 1.4rem;
+  padding: 0;
+  border: none;
+}
+
+.setting-group:last-child {
+  margin-bottom: 0;
+}
+
+.setting-group > legend {
+  padding: 0 0 0.5rem;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.setting-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.setting-row strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.setting-row small {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+/* Toggle sized to the 44px touch floor established in the mobile pass. */
+.setting-toggle {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.setting-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform var(--motion-fast) var(--ease-out), background var(--motion-fast);
+}
+
+.setting-toggle:checked {
+  background: var(--accent-action-soft);
+  border-color: var(--accent-action-line);
+}
+
+.setting-toggle:checked::after {
+  transform: translateX(18px);
+  background: var(--accent-action);
+}
+
+.setting-toggle:focus-visible {
+  outline: 2px solid var(--accent-action);
+  outline-offset: 2px;
+}
+
+.chip-group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+/* Gear in the sidebar footer. 44px hit target, glyph is 18px. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.icon-button:hover {
+  color: var(--text);
+  border-color: var(--accent-action-line);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--accent-action);
+  outline-offset: 2px;
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* --- misc ---------------------------------------------------------------- */
 
 .empty-state {

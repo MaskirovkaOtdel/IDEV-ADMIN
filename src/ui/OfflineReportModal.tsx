@@ -5,76 +5,27 @@
  * by `catchUp()` when a hidden tab comes back. The modal is informational: the
  * credits were already applied by the time it renders.
  */
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useGameStore } from '../game/gameStore';
 import { formatDecimal, formatDuration } from '../game/formulas';
 import { BASE_OFFLINE_EFFICIENCY } from '../game/offline';
 import { RESOURCE_LABELS } from '../game/types';
 import { requireGenDef } from '../game/generators';
+import { useDialog } from './useDialog';
 
 const RESOURCE_ORDER = ['cash', 'linesOfCode', 'coffee'] as const;
-
-/** Elements the focus trap will cycle through. */
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export function OfflineReportModal() {
   const report = useGameStore((s) => s.offlineReport);
   const dismiss = useGameStore((s) => s.dismissOfflineReport);
   const pendingArrivals = useGameStore((s) => s.pendingArrivals);
 
-  // Dialog behaviour.
-  //
-  // This modal had no `role`, no `aria-modal`, no Escape handling and no focus
-  // management, while ConfirmResetModal had a role. It is the modal every
-  // returning player sees, so it is the one where getting this wrong matters
-  // most: a screen reader user was told nothing had opened, Tab walked out of the
-  // dialog into the page behind it, and Escape did nothing.
   const windowRef = useRef<HTMLDivElement>(null);
   const dismissButtonRef = useRef<HTMLButtonElement>(null);
-  const restoreFocusTo = useRef<HTMLElement | null>(null);
 
   const open = Boolean(report && !report.trivial);
 
-  // Move focus in on open, and hand it back on close.
-  useEffect(() => {
-    if (!open) return;
-    restoreFocusTo.current = document.activeElement as HTMLElement | null;
-    dismissButtonRef.current?.focus();
-    return () => restoreFocusTo.current?.focus?.();
-  }, [open]);
-
-  // Escape closes. Without it a keyboard user had no non-pointer way out.
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        dismiss();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-
-      // Trap focus. Two focusable elements here, but written as a general loop so
-      // adding a control later does not silently reopen the escape hatch.
-      const root = windowRef.current;
-      if (!root) return;
-      const focusable = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-        (el) => !el.hasAttribute('disabled')
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [dismiss, open]);
+  useDialog({ open, onClose: dismiss, windowRef, initialFocus: dismissButtonRef });
 
   if (!report || report.trivial) return null;
 
