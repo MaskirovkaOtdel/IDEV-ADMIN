@@ -19,6 +19,8 @@
  */
 import Decimal from 'break_infinity.js';
 import { dec, isNaNDecimal, ONE, ZERO } from './decimal';
+import type { ResourceId } from './types';
+import { REVENUE_PER_COFFEE, REVENUE_PER_LOC } from './generators';
 
 /** Guard so a costGrowth delta can never make prices collapse or invert. */
 export const MIN_COST_GROWTH = 1.02;
@@ -98,6 +100,30 @@ export function maxAffordable(
     if (count > 1e9) break; // safety valve; unreachable in practice
   }
   return count;
+}
+
+/**
+ * Cash per second one unit of a generator's output is worth.
+ *
+ * Only LoC and Coffee convert: stockpiles of both bill out as Cash every second,
+ * which is exactly what `computeProductionSnapshot` credits to `perResource.cash`.
+ * Cash generators are already cash, so they convert at 1.
+ *
+ * This exists because the UI has to compare generators that produce different
+ * things. Dividing `24.75 LoC/s` by `26.4 cash/s` produces a number, but not a
+ * meaningful one -- the first is worth 1.24 cash/s and the second 26.4. A meter
+ * built on raw rates showed Code Review at 94% of the bar while it contributed
+ * under 3% of actual income.
+ */
+export function cashValueOf(resource: ResourceId, rate: Decimal): Decimal {
+  switch (resource) {
+    case 'linesOfCode':
+      return rate.times(dec(REVENUE_PER_LOC));
+    case 'coffee':
+      return rate.times(dec(REVENUE_PER_COFFEE));
+    case 'cash':
+      return rate;
+  }
 }
 
 /** Production per second for one generator type, before global stacking. */

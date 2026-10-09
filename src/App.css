@@ -459,6 +459,32 @@
   opacity: 0.3;
 }
 
+/* The bar is progress toward doubling income, which is only meaningful if the
+   player knows what it is progress towards. The label is part of the meter, not
+   a caption: without it the bar is just a coloured line. */
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.meter-row .gen-meter {
+  flex: 1;
+}
+
+.meter-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* Secondary figure, e.g. the cash a LoC rate is worth. */
+.stat-aside {
+  color: var(--text-faint);
+  font-size: 0.85em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Targeted, not a blanket override.
 

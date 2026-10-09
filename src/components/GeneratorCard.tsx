@@ -9,7 +9,14 @@ import { useMemo, useState } from 'react';
 import type { GeneratorId } from '../game/types';
 import { useGameStore, type BuyAmount } from '../game/gameStore';
 import { requireGenDef } from '../game/generators';
-import { costForBulkPurchase, effectiveCostGrowth, formatDecimal, maxAffordable } from '../game/formulas';
+import {
+  cashValueOf,
+  costForBulkPurchase,
+  effectiveCostGrowth,
+  formatDecimal,
+  maxAffordable,
+} from '../game/formulas';
+import { ZERO } from '../game/decimal';
 import { BuyAmountToggle } from './BuyAmountToggle';
 import { RESOURCE_UNITS } from '../game/labels';
 import { usePulse } from '../game/useFlash';
@@ -59,19 +66,53 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
   // generator appearing, which is the moment the game pays the player.
   const bought = usePulse(owned);
 
-  // The meter shows live output. It is scaled against the strongest generator on
-  // screen so the longest bar means "your biggest producer" rather than an
-  // arbitrary cap that would leave every card looking equally full.
-  const strongestRate = useGameStore((s) => {
-    const per = s.transient.production.perGenerator;
-    let max = 0;
-    for (const id of Object.keys(per) as GeneratorId[]) {
-      const v = Number(per[id].toString());
-      if (Number.isFinite(v) && v > max) max = v;
-    }
-    return max;
-  });
-  const meterPct = strongestRate > 0 ? Math.min(100, (Number(rate.toString()) / strongestRate) * 100) : 0;
+  // The meter shows this generator's share of your income.
+  //
+  // Two corrections over the version that shipped in v0.4.0, which was wrong in
+  // a way that looked plausible.
+  //
+  // 1. VALUE, NOT MAGNITUDE. It divided raw rates against each other, so
+  //    `24.75 LoC/s` was compared directly with `26.4 cash/s`. On a real save
+  //    that gave Code Review a bar at 94% while it contributed under 3% of actual
+  //    income -- LoC converts at 0.05 and Coffee at 0.35. Everything is now
+  //    converted to cash first, so the bar means "how much of your money this
+  //    makes".
+  //
+  // 2. ABSOLUTE, NOT RELATIVE. It was scaled against the strongest generator on
+  //    screen, which made the bar a pure ratio: a global multiplier scales every
+  //    card equally, so buying an upgrade moved nothing at all. That is what made
+  //    the meter look broken after a purchase -- the numbers rose and the bars
+  //    did not. The bar is now progress toward a real target, so filling it means
+  //    something and an upgrade visibly pushes it.
+  const cashValue = useMemo(() => cashValueOf(def.produces, rate), [def.produces, rate]);
+
+  // What one more unit of this generator adds to income.
+  //
+  // Derived by dividing the live rate by the owned count rather than rebuilding
+  // the multiplier stack: `rate` is already `baseRate * owned * mult`, so the
+  // quotient is the per-unit rate with every multiplier applied. Reconstructing
+  // the multipliers separately would mean duplicating the engine's multiplication
+  // order and hoping the two stay in step.
+  const perUnitCash = useMemo(
+    () => (owned > 0 ? cashValueOf(def.produces, rate.div(owned)) : ZERO),
+    [def.produces, owned, rate]
+  );
+
+  const incomePerSec = useGameStore((s) => s.transient.production.cashPerSec);
+
+  // Progress toward a doubling: 100% means buying one more would double income.
+  //
+  // An absolute target rather than a comparison to the best card, so a global
+  // multiplier moves every bar instead of leaving them all fixed. Doubling is the
+  // threshold because it holds meaning at every scale -- early game it is seconds
+  // away, late game it is hours, and the bar stays honest throughout.
+  const secondsToDouble = useMemo(() => {
+    if (perUnitCash.lessThanOrEqualTo(ZERO) || incomePerSec.lessThanOrEqualTo(ZERO)) return 0;
+    const ratio = Number(incomePerSec.div(perUnitCash).toString());
+    return Number.isFinite(ratio) ? ratio : 0;
+  }, [incomePerSec, perUnitCash]);
+
+  const meterPct = secondsToDouble > 0 ? Math.min(100, (1 / secondsToDouble) * 100) : 0;
 
   return (
     <article
@@ -90,11 +131,13 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
         <span className="owned-badge">{owned}</span>
       </header>
 
-      <div
-        className={`gen-meter ${Number(rate.toString()) > 0 ? '' : 'is-idle'}`}
-        role="presentation"
-      >
-        <div className="gen-meter-fill" style={{ width: `${meterPct}%` }} />
+      <div className="meter-row">
+        <div className={`gen-meter ${cashValue.gt(ZERO) ? '' : 'is-idle'}`} role="presentation">
+          <div className="gen-meter-fill" style={{ width: `${meterPct}%` }} />
+        </div>
+        <span className="meter-label">
+          {cashValue.gt(ZERO) ? `${meterPct.toFixed(1)}% to 2× income` : 'idle'}
+        </span>
       </div>
 
       <dl className="card-stats">
@@ -102,6 +145,12 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
           <dt>Production</dt>
           <dd>
             {formatDecimal(rate)} {RESOURCE_UNITS[def.produces]}/s
+            {/* LoC and Coffee bill out as cash, so the conversion is shown rather
+                than left for the player to infer. Without it the meter appears to
+                disagree with the number directly above it. */}
+            {def.produces !== 'cash' && (
+              <span className="stat-aside"> = {formatDecimal(cashValue)} cash/s</span>
+            )}
           </dd>
         </div>
         <div>
