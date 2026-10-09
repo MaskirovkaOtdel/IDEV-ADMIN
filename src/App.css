@@ -188,6 +188,59 @@
   border-color: var(--accent-line);
 }
 
+/* Nav item carrying an unclaimed reset. Marked by colour, a dot, and a changed
+   hint -- three signals because the hint text alone is easy to skim past, and the
+   whole point is that this was being skimmed past. */
+.nav-item-actionable {
+  border-color: var(--state-affordable);
+  background: var(--state-affordable-soft);
+}
+
+.nav-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  background: var(--state-affordable);
+  vertical-align: middle;
+}
+
+.nav-item-actionable .nav-hint {
+  color: var(--state-affordable);
+  font-family: var(--mono);
+}
+
+/* A reset that would bank real Tech Debt.
+ *
+ * The plain chip reads "TECH DEBT 0" forever to a player who has never prestiged,
+ * which is no reason to open the Prestige tab. Reviewed save: 3.79B lifetime cash,
+ * 402 debt available, 22 permanent upgrades unreachable behind a zero. This is
+ * the affordance that was missing. */
+.chip-actionable {
+  border-color: var(--state-affordable);
+  background: var(--state-affordable-soft);
+  cursor: default;
+}
+
+.chip-badge {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: var(--state-affordable);
+  color: var(--bg);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+
+.chip-sub {
+  margin-top: 0.1rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--state-affordable);
+}
+
 .chip-label {
   font-size: 0.68rem;
   text-transform: uppercase;

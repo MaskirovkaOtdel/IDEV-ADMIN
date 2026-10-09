@@ -5,13 +5,16 @@
  * prestige). The sidebar also carries the brand and the save indicator, which is
  * where an idle game player looks for "is my progress safe".
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { HeaderBar } from './HeaderBar';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import { GeneratorsPanel } from './GeneratorsPanel';
 import { UpgradesPanel } from './UpgradesPanel';
 import { PrestigePanel } from './PrestigePanel';
 import { useGameStore } from '../game/gameStore';
+import { techDebtForLifetimeCash } from '../game/prestige';
+import { formatDecimal } from '../game/formulas';
+import { dec, ZERO } from '../game/decimal';
 
 export type TabId = 'generators' | 'upgrades' | 'prestige';
 
@@ -28,10 +31,27 @@ const TABS: { id: TabId; label: string; hint: string }[] = [
   { id: 'prestige', label: 'Prestige', hint: 'Burn it for Tech Debt' },
 ];
 
+/** Cheapest permanent upgrade. Below this a reset banks nothing spendable. */
+const RESET_WORTH = dec(25);
+
 export function Layout({ onOpenPrestige, onOpenDebug, burning }: LayoutProps) {
   const [tab, setTab] = useState<TabId>('generators');
   const loadWarning = useGameStore((s) => s.loadWarning);
   const lifetimeCash = useGameStore((s) => s.gameState.resources.lifetimeCash);
+
+  // What a reset is currently worth. The Prestige tab showed this, but only if you
+  // navigated to it -- and "Burn it for Tech Debt" is not a reason to click when
+  // the header reads TECH DEBT 0. In a reviewed save, 402 debt sat unclaimed
+  // behind that zero for nine hours of play.
+  //
+  // Selected as primitives and derived outside the selector: `techDebtForLifetimeCash`
+  // allocates a new Decimal per call, and a zustand selector returning a fresh
+  // object re-renders forever under v5.
+  const bankedLifetimeCash = useGameStore((s) => s.gameState.prestige.baselineLifetimeCash);
+  const pendingTechDebt = useMemo(() => {
+    const earned = lifetimeCash.minus(bankedLifetimeCash ?? ZERO);
+    return techDebtForLifetimeCash(earned.lessThan(ZERO) ? ZERO : earned);
+  }, [lifetimeCash, bankedLifetimeCash]);
 
   return (
     <div className="layout">
@@ -51,12 +71,23 @@ export function Layout({ onOpenPrestige, onOpenDebug, burning }: LayoutProps) {
             <button
               key={entry.id}
               type="button"
-              className={`nav-item ${tab === entry.id ? 'active' : ''}`}
+              className={`nav-item ${tab === entry.id ? 'active' : ''} ${
+                entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH) ? 'nav-item-actionable' : ''
+              }`}
               onClick={() => setTab(entry.id)}
               aria-current={tab === entry.id}
             >
-              <span className="nav-label">{entry.label}</span>
-              <span className="nav-hint">{entry.hint}</span>
+              <span className="nav-label">
+                {entry.label}
+                {entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH) && (
+                  <span className="nav-dot" aria-hidden="true" />
+                )}
+              </span>
+              <span className="nav-hint">
+                {entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH)
+                  ? `${formatDecimal(pendingTechDebt)} debt ready`
+                  : entry.hint}
+              </span>
             </button>
           ))}
         </nav>
