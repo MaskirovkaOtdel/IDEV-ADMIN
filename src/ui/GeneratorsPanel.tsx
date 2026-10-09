@@ -14,6 +14,16 @@ import { formatDecimal } from '../game/formulas';
 /** Stable empty set, so identity does not change on every render. */
 const EMPTY_SET: ReadonlySet<string> = new Set<string>();
 
+/**
+ * Gap between arrivals, in ms.
+ *
+ * Two cards animating together read as one event; staggered they read as two
+ * separate hires, which is what actually happened. 220ms is long enough to
+ * register individually and short enough that a three-generator return still
+ * finishes before the player has decided what to click.
+ */
+const ARRIVAL_STAGGER_MS = 220;
+
 export function GeneratorsPanel() {
   const generators = useGameStore((s) => s.gameState.generators);
   const lifetimeCash = useGameStore((s) => s.gameState.resources.lifetimeCash);
@@ -35,29 +45,33 @@ export function GeneratorsPanel() {
 
   // Which generators have just become available, for the arrival animation.
   //
-  // WHY THIS LIVES HERE AND NOT IN THE CARD
-  // ----------------------------------------
-  // GeneratorCard used to watch its own `unlocked` flag for the change. That could
-  // never fire: this panel renders unlocked generators only, so a card does not
-  // exist while its generator is locked. By the time the card mounts the flag is
-  // already true, and a change-from-false watcher sees only its first value. The
-  // animation shipped as dead code and went unnoticed because headless testing
-  // suppresses motion entirely.
+  // TWO SOURCES, AND THE DIFFERENCE MATTERS
+  // ---------------------------------------
+  // 1. `pendingArrivals` from the store: generators that the *offline walk*
+  //    unlocked while the player was away. The store is the only place that can
+  //    know this, because both the before and after states exist there and
+  //    nowhere else.
+  // 2. A live diff below: a generator unlocking while the tab is open.
   //
-  // The panel is the only place that can tell "this generator just arrived" from
-  // "this generator has been here since you loaded", because it is the component
-  // that holds both the current and previous unlocked sets.
+  // Both are needed. The store alone misses live unlocks; the live diff alone is
+  // blind on load, because by mount time offline-unlocked generators are simply
+  // unlocked and indistinguishable from ones restored from the save. An earlier
+  // version used only the diff and suppressed its first pass, which meant a
+  // player returning after sixteen hours saw no arrival animation at all -- the
+  // exact case the animation exists for.
+  const pendingArrivals = useGameStore((s) => s.pendingArrivals);
+  const clearPendingArrivals = useGameStore((s) => s.clearPendingArrivals);
+  const offlineReportOpen = useGameStore((s) => s.offlineReport !== null);
+
   const [arrived, setArrived] = useState<ReadonlySet<string>>(EMPTY_SET);
   const previousUnlocked = useRef<ReadonlySet<string>>(EMPTY_SET);
 
+  // Live unlocks while the tab is open.
   useEffect(() => {
     const current = new Set(
       GENERATOR_DEFS.filter((def) => generators[def.id].unlocked).map((def) => def.id)
     );
 
-    // On the first pass there is no previous set to compare against, so nothing
-    // counts as an arrival. A player loading a mid-game save should not be shown
-    // six unlock animations for generators unlocked hours ago.
     const isFirstPass = previousUnlocked.current.size === 0;
     const fresh = new Set<string>();
     if (!isFirstPass) {
@@ -75,9 +89,37 @@ export function GeneratorsPanel() {
     // commit, which React flags as a cascading render and which would make the
     // game tick loop do double work at exactly the moment a generator unlocks.
     if (fresh.size > 0) {
-      queueMicrotask(() => setArrived(fresh));
+      queueMicrotask(() => setArrived((prev) => new Set([...prev, ...fresh])));
     }
   }, [generators]);
+
+  // Offline arrivals, played only once the modal is gone.
+  //
+  // Animating cards behind a modal achieves nothing: the player cannot see them,
+  // and dismissing the summary reveals cards that have already finished
+  // animating. So the arrivals wait for the dismissal, which is also the moment
+  // the player starts looking at the screen. The modal names who arrived, so
+  // dismissal is an invitation to go and look rather than a dismissal of nothing.
+  useEffect(() => {
+    if (pendingArrivals.length === 0 || offlineReportOpen) return;
+
+    // Staggered so two arrivals read as two hires rather than one event. The
+    // queue is walked with one timer per card; clearing them all on cleanup stops
+    // a mid-sequence unmount from leaving stragglers to fire into a dead tree.
+    const timers = pendingArrivals.map((id, index) =>
+      setTimeout(() => setArrived((prev) => new Set([...prev, id])), index * ARRIVAL_STAGGER_MS)
+    );
+
+    const settle = setTimeout(
+      () => clearPendingArrivals(),
+      pendingArrivals.length * ARRIVAL_STAGGER_MS + 900
+    );
+
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+      clearTimeout(settle);
+    };
+  }, [pendingArrivals, offlineReportOpen, clearPendingArrivals]);
 
   // Clear the flag once the animation has played, so a card does not replay it on
   // an unrelated re-render.
@@ -110,9 +152,12 @@ export function GeneratorsPanel() {
       </div>
 
       <div className="card-grid">
-        {unlocked.map((def) => (
-          <GeneratorCard key={def.id} generatorId={def.id} justArrived={arrived.has(def.id)} />
-        ))}
+        {unlocked
+          .slice()
+          .sort((a, b) => Number(arrived.has(a.id)) - Number(arrived.has(b.id)))
+          .map((def) => (
+            <GeneratorCard key={def.id} generatorId={def.id} justArrived={arrived.has(def.id)} />
+          ))}
       </div>
     </section>
   );

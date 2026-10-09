@@ -9,12 +9,14 @@ import { useGameStore } from '../game/gameStore';
 import { formatDecimal, formatDuration } from '../game/formulas';
 import { BASE_OFFLINE_EFFICIENCY } from '../game/offline';
 import { RESOURCE_LABELS } from '../game/types';
+import { requireGenDef } from '../game/generators';
 
 const RESOURCE_ORDER = ['cash', 'linesOfCode', 'coffee'] as const;
 
 export function OfflineReportModal() {
   const report = useGameStore((s) => s.offlineReport);
   const dismiss = useGameStore((s) => s.dismissOfflineReport);
+  const pendingArrivals = useGameStore((s) => s.pendingArrivals);
 
   if (!report || report.trivial) return null;
 
@@ -52,6 +54,18 @@ export function OfflineReportModal() {
               );
             })}
           </ul>
+
+          {/* Announce arrivals here rather than letting the cards animate
+              silently behind a modal. Without this the player dismisses the
+              summary and either misses the arrivals entirely or wonders what the
+              brief movement on the cards was. Naming them makes the dismissal
+              meaningful: you are told what turned up, then you go look at it. */}
+          {pendingArrivals.length > 0 && (
+            <p className="offline-arrivals">
+              {pendingArrivals.length === 1 ? '1 new hire available' : `${pendingArrivals.length} new hires available`}
+              : <strong>{pendingArrivals.map((id) => requireGenDef(id).name).join(', ')}</strong>
+            </p>
+          )}
         </section>
 
         <footer className="modal-footer">

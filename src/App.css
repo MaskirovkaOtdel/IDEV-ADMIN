@@ -902,6 +902,28 @@
   border-radius: var(--radius-sm);
 }
 
+/* Who arrived while you were away. Treated as a call to action rather than a
+   footnote: the cards animate after this modal is dismissed, so naming them here
+   is what makes the dismissal mean something instead of just closing a dialog. */
+.offline-arrivals {
+  margin: 0.7rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--accent-action-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-action-soft);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.offline-arrivals strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
 /* --- misc ---------------------------------------------------------------- */
 
 .empty-state {

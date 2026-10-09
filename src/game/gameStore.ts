@@ -105,6 +105,22 @@ export interface GameStoreState {
   transient: TransientState;
   /** Offline report to display once, cleared by the UI. */
   offlineReport: OfflineReport | null;
+  /**
+   * Generators that became available during the offline catch-up, set by
+   * `hydrate` and cleared by the UI once it has shown them.
+   *
+   * WHY THIS LIVES IN THE STORE
+   * ---------------------------
+   * A panel-level watcher cannot detect this. Generators unlock *during* the
+   * offline walk, but by the time any component mounts they are already unlocked,
+   * so a snapshot diff looks identical to a restored save. Comparing before and
+   * after is only possible where both states exist, which is here.
+   *
+   * That distinction is the whole feature: a player returning after sixteen hours
+   * should see the two generators that arrived while they were asleep announce
+   * themselves, and a player who reloaded a moment later should see nothing.
+   */
+  pendingArrivals: GeneratorId[];
   /** Set when a load rejected a save, so the UI can warn the player. */
   loadWarning: string | null;
   /** How many seconds of real play time this session (not persisted until save). */
@@ -138,6 +154,12 @@ export interface GameStoreState {
 
   // --- ui ---
   dismissOfflineReport: () => void;
+  /**
+   * Called by the UI once arrivals have been shown, so a reload does not replay
+   * them. Separate from dismissing the report because the two are not the same
+   * moment: the modal is dismissed immediately, the arrivals play after it.
+   */
+  clearPendingArrivals: () => void;
   setSaveStatus: (status: TransientState['save']['status']) => void;
 }
 
@@ -164,6 +186,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     save: { status: 'idle', lastSavedAt: getLastSavedAt() },
   },
   offlineReport: null,
+  pendingArrivals: [],
   loadWarning: null,
   sessionSeconds: 0,
 
@@ -185,18 +208,39 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         transient: deriveTransient(anchored, { ...get().transient, production }),
         loadWarning: result.error ?? null,
         offlineReport: null,
+        // Too brief an absence to have unlocked anything.
+        pendingArrivals: [],
       });
       return result.source;
     }
 
+    // Generators unlocked by the offline walk.
+    //
+    // Snapshot the unlocked flags BEFORE the walk. `applyOfflineProgress` copies
+    // the generators map but not the per-generator objects inside it, and
+    // `engineTick` sets `.unlocked = true` in place -- so after the walk
+    // `result.state` and `state` are the *same objects* and a diff between them
+    // always comes back empty. Comparing after the fact silently reported zero
+    // arrivals for every return visit, which is the bug this fixes.
+    const unlockedBefore = new Set(
+      GENERATOR_IDS.filter((id) => result.state.generators[id].unlocked)
+    );
+
     const { state, report } = applyOfflineProgress(result.state, elapsedMs, now);
     const production = engineTick(state, 0, now);
+
+    const arrivals = GENERATOR_IDS.filter(
+      (id) => !unlockedBefore.has(id) && state.generators[id].unlocked
+    );
 
     set({
       gameState: state,
       transient: deriveTransient(state, { ...get().transient, production }),
       loadWarning: result.error ?? null,
       offlineReport: report.trivial ? null : report,
+      // Only meaningful alongside a report: without one the player was away too
+      // briefly for anything to have unlocked.
+      pendingArrivals: report.trivial ? [] : arrivals,
     });
     return result.source;
   },
@@ -434,6 +478,9 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
           tickVersion: state.tickVersion,
         },
         offlineReport: null,
+        // An imported save is a snapshot, not an absence -- nothing arrived while
+        // the player was looking at a file picker.
+        pendingArrivals: [],
         loadWarning: null,
       });
       return OK;
@@ -458,6 +505,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         save: { status: 'idle', lastSavedAt: null },
       },
       offlineReport: null,
+      pendingArrivals: [],
       loadWarning: null,
       sessionSeconds: 0,
     });
@@ -467,6 +515,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
   // ui
   // -------------------------------------------------------------------------
   dismissOfflineReport: () => set({ offlineReport: null }),
+  clearPendingArrivals: () => set({ pendingArrivals: [] }),
 
   setSaveStatus: (status) =>
     set((s) => ({ transient: { ...s.transient, save: { ...s.transient.save, status } } })),
