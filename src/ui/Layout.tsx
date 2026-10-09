@@ -42,7 +42,7 @@ export function Layout({ onOpenPrestige, onOpenDebug, burning }: LayoutProps) {
           </span>
           <div>
             <h1 className="brand-title">IDEV : ADMIN</h1>
-            <p className="brand-sub">v0.4 · ship it</p>
+            <p className="brand-sub">v0.4.1 · ship it</p>
           </div>
         </div>
 
