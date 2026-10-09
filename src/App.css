@@ -512,9 +512,9 @@
   opacity: 0.3;
 }
 
-/* The bar is progress toward doubling income, which is only meaningful if the
-   player knows what it is progress towards. The label is part of the meter, not
-   a caption: without it the bar is just a coloured line. */
+/* The bar is this generator's share of team output, which is only meaningful if
+   the player knows what it measures. The label is part of the meter, not a
+   caption: without it the bar is just a coloured line. */
 .meter-row {
   display: flex;
   align-items: center;
@@ -532,9 +532,10 @@
   white-space: nowrap;
 }
 
-/* Second line: what the bar is counting toward. Separate from the label because
-   they answer different questions -- the label ranks this generator against the
-   rest of the team, the hint says whether the bar is nearly full. */
+/* Second line: whether this hire is affordable, or how long it takes to pay for
+   itself. Separate from the label because they answer different questions -- the
+   label ranks this generator against the rest of the team, the hint tells you
+   whether buying it is worth it. */
 .meter-hint {
   margin: 0.3rem 0 0;
   font-family: var(--mono);
@@ -542,10 +543,16 @@
   color: var(--text-faint);
 }
 
-/* Secondary figure, e.g. the cash a LoC rate is worth. */
+/* Secondary figure, e.g. the cash a LoC rate is worth.
+ *
+ * `nowrap` is load-bearing, not cosmetic: without it the unit wrapped and every
+ * LoC and Coffee card rendered "= 125.3" / "cash / s" across two lines, which
+ * read as a layout fault rather than a conversion. */
 .stat-aside {
+  display: block;
   color: var(--text-faint);
   font-size: 0.85em;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -572,6 +579,30 @@
 
   .card {
     transition: none;
+  }
+
+  /* ?motion=force — play the event effects anyway.
+   *
+   * An explicit, opt-in override of an accessibility preference, never on by
+   * default. It exists because "are the animations actually visible?" is
+   * unanswerable for anyone whose OS has reduced motion enabled, which includes
+   * most automated browsers. Rather than fight the preference, it is made
+   * reversible: append ?motion=force to the URL.
+   *
+   * Scoped to the event layer only. The state transitions above stay off, so
+   * this does not turn the whole UI into a moving target -- it restores the
+   * purchase bloom, the arrival slide and the burn sweep, which are the effects
+   * whose visibility was in question. */
+  :root[data-motion='force'] .card.just-bought {
+    animation: flash-bought 380ms var(--ease-out);
+  }
+
+  :root[data-motion='force'] .card.just-unlocked {
+    animation: unlock-in 620ms var(--ease-out);
+  }
+
+  :root[data-motion='force'] .workspace.is-burning {
+    animation: burn-sweep 900ms var(--ease-out);
   }
 
   .nav-item,
@@ -816,11 +847,28 @@
 }
 
 .modal-close {
+  /* A 44px hit target rather than the glyph's natural size. The mobile pass
+     established 44px as the floor for anything tappable, and a bare × is well
+     under it. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -0.5rem -0.5rem -0.5rem 0;
   background: none;
   border: none;
+  border-radius: var(--radius-sm);
   font-size: 1.3rem;
   line-height: 1;
   color: var(--text-dim);
+  cursor: pointer;
+}
+
+.modal-close:hover,
+.modal-close:focus-visible {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .modal-body {
@@ -1011,6 +1059,23 @@
   color: var(--text);
   font-family: var(--mono);
   font-weight: 600;
+}
+
+/* Visually hidden, still exposed to assistive technology.
+ *
+ * Not `display: none` and not `visibility: hidden`, both of which remove the
+ * element from the accessibility tree and would silence the announcement. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* --- misc ---------------------------------------------------------------- */

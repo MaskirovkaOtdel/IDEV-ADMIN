@@ -93,50 +93,34 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
   //    converted to cash first, so the bar means "how much of your money this
   //    makes".
   //
-  // 2. THE TARGET HAS TO BE REACHABLE. See the note above the bar.
   const cashValue = useMemo(() => cashValueOf(def.produces, rate), [def.produces, rate]);
 
-  // THE BAR: progress toward affording one more.
+  // THE BAR: this generator's share of team output.
   //
-  // THREE TARGETS, THREE REJECTIONS
-  // --------------------------------
-  // This meter has now been wrong twice, both times because I picked a target
-  // that reads well in theory and collapses against a real save.
+  // FOUR TARGETS, THREE REJECTIONS
+  // -------------------------------
+  // This meter has been wrong three times, every time for the same reason: I picked
+  // a target that reads well in principle and collapses against a real save.
   //
   //   v0.4.0  share of the strongest generator. A ratio, so a global multiplier
   //           scaled every card equally and moved nothing.
-  //   v0.4.1  progress toward doubling income. Absolute and well intentioned, and
-  //           it rendered "0.0%" on all seven cards of a real save. Income there
-  //           was 3.23M/s while the best generator added 250/s -- one purchase was
-  //           0.0077% of income, so 100% was 129x out of reach. A target only
-  //           counts if a purchase can actually move it.
+  //   v0.4.1  progress toward doubling income. Rendered "0.0%" on all seven cards
+  //           of a real save -- income 3.23M/s against a best generator adding
+  //           250/s, so one purchase was 0.0077% and 100% was 129x out of reach.
+  //   v0.4.2  cash / cost of one more. Correct in the middle of the curve and
+  //           pinned at 100% on all seven cards for a player 41x to 1080x past
+  //           every cost. Just as useless as zero, in the other direction.
   //
-  // Affordability survives that test. cash / cost is bounded by 1 by definition,
-  // so it is non-zero whenever you are saving and fills to 100% exactly when the
-  // button becomes enabled. It answers the question the player is actually asking
-  // -- "am I close to another?" -- and it moves on every tick and every purchase.
-  const meterPct = useMemo(() => {
-    if (owned === 0) return 0;
-    // Cost of ONE more unit, independent of the ×1/×10/×100/MAX toggle. The bar is
-    // about the next hire, not the size of the current selection, so switching
-    // quantity must not rescale it.
-    const nextCost = costForBulkPurchase(def.baseCost, growth, owned, 1, discount);
-    if (nextCost.lessThanOrEqualTo(ZERO)) return 100;
-    const ratio = Number(cash.div(nextCost).toString());
-    if (!Number.isFinite(ratio)) return 0;
-    return Math.max(0, Math.min(100, ratio * 100));
-  }, [cash, def.baseCost, discount, growth, owned]);
-
-  // THE LABEL: this generator's share of what the team produces.
+  // The lesson is not "pick a better target". It is that a BAR must carry a
+  // quantity which varies across the board at the player's actual scale.
+  // Affordability fails for the rich; income-doubling fails for anyone whose income
+  // comes mostly from stockpiles. Share of team output spans 0.2% to 85.6% on one
+  // screen and never saturates, because it is bounded by construction -- the shares
+  // sum to 100.
   //
-  // Deliberately NOT a share of `cashPerSec`. That figure includes revenue from
-  // billing out stockpiled LoC and Coffee, which is unbounded and unrelated to
-  // hiring -- in a real save it was 99.8% of income, so a share of it pinned every
-  // card near 0.01% and said nothing about which generator was worth buying.
-  //
-  // Summing cash-equivalent output across the team instead answers the useful
-  // question: is this generator pulling its weight? K8s Cluster earns ~86% of the
-  // team's output from 40 units, which is exactly the comparison the player wants.
+  // Affordability still matters, so it moves to the hint text below. Text degrades
+  // far better than a bar: "ready" versus "3 days away" still differs even when every
+  // bar would read full.
   const teamSharePct = useGameStore((s) => {
     const per = s.transient.production.perGenerator;
     let total = 0;
@@ -151,6 +135,42 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
     }
     return total > 0 ? (mine / total) * 100 : 0;
   });
+
+  const meterPct = teamSharePct;
+
+  // THE HINT: how long the next hire takes to pay for itself.
+  //
+  // Seconds of current income to repay the purchase. It answers "is this one worth
+  // it" more directly than either previous target, and unlike a bar it degrades
+  // gracefully: "ready" versus "3 days away" still differ when every bar reads full.
+  //
+  // On the reviewed save this spans K8s Cluster at 1.2 days to Code Review at
+  // 24,209 days -- which is the honest answer, and is exactly the fact the player
+  // needs when deciding what to buy next.
+  const payback = useMemo(() => {
+    // Cost of ONE more, independent of the quantity toggle: the hint is about the
+    // next hire, so switching to MAX must not change what it says.
+    const nextCost = costForBulkPurchase(def.baseCost, growth, owned, 1, discount);
+    if (owned <= 0 || nextCost.lessThanOrEqualTo(ZERO)) return null;
+    const perUnit = cashValueOf(def.produces, rate.div(owned));
+    if (perUnit.lessThanOrEqualTo(ZERO)) return null;
+    const seconds = Number(nextCost.div(perUnit).toString());
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+  }, [def.baseCost, def.produces, discount, growth, owned, rate]);
+
+  const paybackText = useMemo(() => {
+    if (payback === null) return 'no output yet';
+    if (payback < 60) return `pays back in ${Math.max(1, Math.round(payback))}s`;
+    if (payback < 3600) return `pays back in ${Math.round(payback / 60)}m`;
+    if (payback < 86_400) return `pays back in ${(payback / 3600).toFixed(1)}h`;
+    return `pays back in ${(payback / 86_400).toFixed(1)} days`;
+  }, [payback]);
+
+  /** Affordable now, or how long until it is. */
+  const affordabilityText = useMemo(
+    () => (affordable ? 'ready to hire' : paybackText),
+    [affordable, paybackText]
+  );
 
   return (
     <article
@@ -174,14 +194,10 @@ export function GeneratorCard({ generatorId, justArrived = false }: GeneratorCar
           <div className="gen-meter-fill" style={{ width: `${meterPct}%` }} />
         </div>
         <span className="meter-label" title="Share of what your team produces">
-          {cashValue.gt(ZERO)
-            ? `${formatPercent(teamSharePct)} of team`
-            : 'not producing'}
+          {cashValue.gt(ZERO) ? `${formatPercent(teamSharePct)} of team` : 'not producing'}
         </span>
       </div>
-      <p className="meter-hint">
-        {meterPct >= 100 ? 'ready to hire another' : `${formatPercent(meterPct)} to the next hire`}
-      </p>
+      <p className="meter-hint">{affordabilityText}</p>
 
       <dl className="card-stats">
         <div>

@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout } from './ui/Layout';
 import { ConfirmResetModal } from './ui/ConfirmResetModal';
 import { OfflineReportModal } from './ui/OfflineReportModal';
+import { LiveRegion } from './components/LiveRegion';
 import { DebugPanel } from './components/DebugPanel';
 import { LoadingIndicator } from './ui/LoadingIndicator';
 import { useGameStore } from './game/gameStore';
@@ -80,6 +81,21 @@ export default function App() {
   const [burning, setBurning] = useState(false);
   const hydratedRef = useRef(false);
 
+  // ?motion=force — opt in to the event effects even when the OS asks for
+  // reduced motion.
+  //
+  // Set as a data attribute on <html> rather than a React state so the stylesheet
+  // can key off it with a plain selector and no re-render on load. Read once:
+  // changing it mid-session would leave animations in a half-enabled state.
+  //
+  // This deliberately overrides an accessibility preference, so it is never on by
+  // default and only ever applies to the event layer. If you have reduced motion
+  // enabled because it causes you discomfort, leave this off.
+  useEffect(() => {
+    const forced = new URLSearchParams(window.location.search).get('motion') === 'force';
+    if (forced) document.documentElement.dataset.motion = 'force';
+  }, []);
+
   // Hydrate exactly once, even under React 19 StrictMode double-invocation.
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -137,6 +153,9 @@ export default function App() {
       />
 
       <GameRuntime />
+
+      {/* Announcements for the event layer, which is otherwise motion-only. */}
+      <LiveRegion />
 
       <OfflineReportModal />
       <ConfirmResetModal

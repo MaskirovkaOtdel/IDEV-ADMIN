@@ -146,17 +146,35 @@ describe('the rendered card uses the cash-denominated meter', () => {
     expect(600 / 30).toBe(20);
   });
 
-  it('shows affordability on the bar, bounded by 100%', async () => {
-    // With 1e9 cash every generator is instantly affordable, so the bar pins to
-    // 100. That is the intended ceiling, not a bug -- but it does mean the bar
-    // cannot rank cards, which is why the label carries the share.
+  it('shows payback in the hint, which is the decision-relevant number', async () => {
+    // The bar carries team share; the hint carries whether this hire is worth it.
     const cards = await renderCards((s) => {
       s.generators.juniorDev = { owned: 10, unlocked: true };
     });
 
-    const fill = cards.find((c) => c.title === 'Junior Dev')?.fill?.style.width ?? '';
-    expect(fill).toBe('100%');
-    expect(cards.find((c) => c.title === 'Junior Dev')?.hint).toBe('ready to hire another');
+    const hint = cards.find((c) => c.title === 'Junior Dev')?.hint ?? '';
+    // Affordable at 1e9 cash, so the hint says so rather than quoting a payback.
+    expect(hint).toBe('ready to hire');
+  });
+
+  it('quotes a payback when the hire is not affordable yet', async () => {
+    // Payback never degenerates the way a bar does: "ready" and "3 days away" are
+    // different states even when every bar would read full.
+    useGameStore.getState().hardReset();
+    const state = createInitialState();
+    state.resources.cash = dec(1);
+    state.resources.lifetimeCash = dec(1);
+    state.generators.juniorDev = { owned: 10, unlocked: true };
+    saveGameState(state);
+
+    render(<App />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+
+    const hint =
+      document.querySelector('.generator-card .meter-hint')?.textContent ?? '';
+    expect(hint).toMatch(/pays back in/);
   });
 
   it('states the cash value of a non-cash generator', async () => {
@@ -262,32 +280,36 @@ describe('the meter survives a late-game save', () => {
     expect(share('K8s Cluster')).toBeGreaterThan(50);
   });
 
-  it('reflects cash on hand rather than ranking the cards', async () => {
-    // Guards against the v0.4.0 formula, which scaled against the strongest
-    // generator on screen. That made the top card always 100% no matter how poor
-    // the player was: a "ratio" bar cannot report scarcity.
+  it('the bars DIFFER across cards, which is the whole point', async () => {
+    // THE REGRESSION THIS EXISTS FOR
+    // -------------------------------
+    // v0.4.2 put cash/cost on the bar. On the reviewed save the player is 41x to
+    // 1080x past every cost, so all seven bars pinned at 100% and every hint read
+    // "ready to hire another" -- the same failure as v0.4.1's 0.0%, in the other
+    // direction. The previous assertion here only checked the bars were not ZERO,
+    // so it passed when every bar was full.
     //
-    // Broke by patch B, which restores raw/strongest and passes every other test
-    // in this file -- the top card stays full, so nothing else notices.
-    useGameStore.getState().hardReset();
-    const state = createInitialState();
-    state.resources.cash = dec(1); // effectively broke
-    state.resources.lifetimeCash = dec(1);
-    state.generators.juniorDev = { owned: 100, unlocked: true };
-    state.generators.seniorDev = { owned: 100, unlocked: true };
-    saveGameState(state);
+    // The bar now carries team share, which spans 0.2% to 85.6% on that save.
+    const cards = await renderLate();
+    const widths = cards.map((c) => Number.parseFloat(c.width));
 
-    render(<App />);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    });
+    // Not all the same. This is the assertion whose absence let the bug ship.
+    expect(new Set(widths).size, `all bars identical: ${widths.join(', ')}`).toBeGreaterThan(1);
 
-    const widths = [...document.querySelectorAll('.generator-card .gen-meter-fill')].map(
-      (el) => Number.parseFloat((el as HTMLElement).style.width)
-    );
-    expect(widths.length).toBeGreaterThan(1);
-    // With 1 cash against costs in the hundreds, nothing is affordable.
-    for (const w of widths) expect(w).toBeLessThan(5);
+    // And the spread is real, not two values a fraction apart.
+    expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThan(20);
+
+    // K8s Cluster is the dominant producer in that save and must lead.
+    expect(widths[cards.findIndex((c) => c.title === 'K8s Cluster')]).toBeGreaterThan(50);
+  });
+
+  it('the bars sum to about 100%, because they are shares', async () => {
+    // A share is bounded by construction. If these ever stop summing to 100 the
+    // normalisation has broken and the bars mean nothing.
+    const cards = await renderLate();
+    const total = cards.reduce((sum, c) => sum + Number.parseFloat(c.width), 0);
+    expect(total).toBeGreaterThan(95);
+    expect(total).toBeLessThan(105);
   });
 
   it('formats a tiny share without collapsing it to 0.0%', async () => {
@@ -323,20 +345,15 @@ describe('the meter survives a late-game save', () => {
   });
 
   it('is stable across the buy-quantity toggle', async () => {
-    // The bar tracks the next single hire, so choosing MAX must not rescale it.
-    // Broke by patch E, which measures against the whole selected quantity.
+    // Neither the bar nor the hint tracks the selection size. The bar is a share
+    // of team output; the hint quotes the payback on ONE more hire. Choosing MAX
+    // describes a different transaction and must not restate either.
     useGameStore.getState().hardReset();
     const state = createInitialState();
-    // Cash is set just UNDER the cost of one more Junior Dev at 40 owned
-    // (10 * 1.12^40 = 930), so the bar sits near 54%.
-    //
-    // Getting this number wrong is what made the first version of this test
-    // vacuous: at 1000 cash the ratio was 107%, so the bar pinned at 100% under
-    // BOTH the correct and the broken implementation and the assertion passed
-    // regardless. A test needs a value where the two differ.
     state.resources.cash = dec(500);
     state.resources.lifetimeCash = dec(500);
     state.generators.juniorDev = { owned: 40, unlocked: true };
+    state.generators.seniorDev = { owned: 5, unlocked: true };
     saveGameState(state);
 
     render(<App />);
@@ -344,17 +361,19 @@ describe('the meter survives a late-game save', () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
 
-    const widthOf = () =>
-      document.querySelector<HTMLElement>('.generator-card .gen-meter-fill')?.style.width ?? '0%';
+    const read = () => ({
+      width:
+        document.querySelector<HTMLElement>('.generator-card .gen-meter-fill')?.style.width ?? '0%',
+      hint: document.querySelector('.generator-card .meter-hint')?.textContent ?? '',
+    });
 
-    const before = widthOf();
+    const before = read();
     expect(
-      Number.parseFloat(before),
+      Number.parseFloat(before.width),
       'bar should be partly full for this test to mean anything'
     ).toBeGreaterThan(5);
-    expect(Number.parseFloat(before)).toBeLessThan(95);
+    expect(Number.parseFloat(before.width)).toBeLessThan(95);
 
-    // Sanity: the MAX button must actually exist, or this test proves nothing.
     const max = [...document.querySelectorAll('.chip-button')].find(
       (b) => b.textContent?.trim().toUpperCase() === 'MAX'
     ) as HTMLButtonElement | undefined;
@@ -364,31 +383,19 @@ describe('the meter survives a late-game save', () => {
     await act(async () => {
       max!.click();
     });
-    // The quantity really changed, or the assertion below is vacuous.
     const labelAfter = document.querySelector('.generator-card button.btn')?.textContent ?? '';
     expect(labelAfter, 'quantity did not change').not.toBe(labelBefore);
     expect(labelAfter).toContain('MAX');
 
-    expect(widthOf()).toBe(before);
+    expect(read().width).toBe(before.width);
+    expect(read().hint).toBe(before.hint);
 
-    // And it must STILL be right on the next tick.
-    //
-    // This is where a quantity-sensitive bar actually breaks. The memo's
-    // dependencies exclude the quantity, so selecting MAX does not recompute it:
-    // the bar looks correct right after the click and then, the moment cash ticks
-    // and the memo re-runs, it silently resizes to the cost of the whole MAX
-    // purchase. Checking only the instant after the click passes for the broken
-    // implementation -- which is what happened the first time.
+    // And on the next tick, where a quantity-sensitive bar would have silently
+    // resized itself once the memo re-ran.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 350));
     });
-
-    // Compared as a band, not an exact string: cash is ticking upward the whole
-    // time, so the correct bar drifts slightly on its own. A quantity-sensitive
-    // bar jumps to 100%, which no amount of drift explains.
-    const afterTick = Number.parseFloat(widthOf());
-    expect(afterTick).toBeGreaterThan(Number.parseFloat(before) - 2);
-    expect(afterTick).toBeLessThan(Number.parseFloat(before) + 2);
+    expect(Number.parseFloat(read().width)).toBeCloseTo(Number.parseFloat(before.width), 1);
   });
 });
 
