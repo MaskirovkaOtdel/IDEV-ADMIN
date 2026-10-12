@@ -22,6 +22,8 @@ import {
   updateSettings,
   resetSettings,
 } from '../game/settings';
+import { NOTATIONS, formatDecimal } from '../game/formulas';
+import { dec } from '../game/decimal';
 import { useDialog } from './useDialog';
 import { SaveManager } from './SaveManager';
 
@@ -103,6 +105,41 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   ))}
                 </div>
               </div>
+            </fieldset>
+
+            <fieldset className="setting-group">
+              <legend>Numbers</legend>
+
+              <div className="setting-row setting-row-stack">
+                <span>
+                  <strong>Large number notation</strong>
+                  <small>
+                    How big numbers are written. All three mean exactly the same amount —
+                    this only changes how they look.
+                  </small>
+                </span>
+                <div className="chip-group" role="radiogroup" aria-label="Large number notation">
+                  {NOTATIONS.map((choice) => (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      role="radio"
+                      title={choice.hint}
+                      aria-checked={settings.notation === choice.value}
+                      className={`chip-button ${settings.notation === choice.value ? 'active' : ''}`}
+                      onClick={() => updateSettings({ notation: choice.value })}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live preview, because the difference is invisible in a label and
+                  the whole point is which one the player can actually read. */}
+              <p className="setting-preview" aria-hidden="true">
+                {[1e9, 1e15, 1e45].map((v) => formatDecimal(dec(v))).join('   ')}
+              </p>
             </fieldset>
 
             <fieldset className="setting-group">

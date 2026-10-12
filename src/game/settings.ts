@@ -21,6 +21,7 @@
  * rule that erodes one option at a time.
  */
 import { useSyncExternalStore } from 'react';
+import { setNotationProvider, type Notation } from './formulas';
 
 export const KEY_SETTINGS = 'idev-admin:settings';
 
@@ -39,6 +40,10 @@ export interface Settings {
   autosaveSeconds: number;
   /** Ask before burning a run for Tech Debt. */
   confirmPrestige: boolean;
+  /**
+   * How large numbers are spelled. Display only — all three denote the same value.
+   */
+  notation: Notation;
 }
 
 export type MotionPreference = 'system' | 'always' | 'never';
@@ -53,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   motion: 'system',
   autosaveSeconds: 15,
   confirmPrestige: true,
+  notation: 'suffix',
 };
 
 /** Autosave intervals offered in the UI, in seconds. */
@@ -91,6 +97,10 @@ export function parseSettings(raw: unknown): Settings {
       DEFAULT_SETTINGS.autosaveSeconds
     ),
     confirmPrestige: clampBool(record.confirmPrestige, DEFAULT_SETTINGS.confirmPrestige),
+    notation:
+      record.notation === 'standard' || record.notation === 'engineering' || record.notation === 'suffix'
+        ? record.notation
+        : DEFAULT_SETTINGS.notation,
   };
 }
 
@@ -141,6 +151,14 @@ function getSnapshot(): Settings {
 export function useSettings(): Settings {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
+
+// Registered at module load so `formatDecimal()` can honour the preference
+// without formulas.ts importing this module -- that would drag storage and React
+// into a pure formatting library, and the Node balance simulator formats with it.
+//
+// A provider rather than a direct read, so there is exactly one place where the
+// preference enters the formatting path.
+setNotationProvider(() => current.notation);
 
 export function updateSettings(patch: Partial<Settings>): void {
   write({ ...current, ...patch });

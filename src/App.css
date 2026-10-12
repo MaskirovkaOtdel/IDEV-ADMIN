@@ -1173,6 +1173,24 @@
   outline-offset: 2px;
 }
 
+/* Live sample of the notation choice. The difference between 1.5Qa and 1.5e15 is
+   invisible in a button label and obvious in a row of numbers. */
+.setting-preview {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.setting-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 /* Locked-upgrade preview: why it is not buyable yet, in the game's own words. */
 .upgrade-locked-reason {
   margin: 0.45rem 0 0;

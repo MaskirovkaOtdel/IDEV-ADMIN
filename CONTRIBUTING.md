@@ -78,12 +78,20 @@ how important the change feels.
 | Bug fix with no effect on saved state | `0.1.1` | Existing saves load unchanged |
 | New permanent upgrade, new generator tier | `0.2.0` | Progress now means something different |
 | Cost, rate, or Tech Debt rebalance | `0.2.0` | Old progress is relatively wrong after it |
+| New settings option that changes nothing about progress | `0.1.1` | The game plays identically; only presentation differs |
 | Any `CURRENT_SAVE_VERSION` bump | `0.2.0` | **Always.** This is the hard line |
 | Typo, CI config, docs | none | Not a release |
 
 So `0.1.x` is the patch series and `0.2.0` is the next milestone. A hotfix
 takes `0.1.1`, not `0.2.0`, even when it fixes something serious — the number
 is a map of the game's shape, and noise there costs more than it buys.
+
+The test a bump has to pass is whether someone's *progress* changed meaning, not
+whether code did. A new number-notation setting ships as a patch because the
+shortest and the longest notation denote the same value, so no save loads
+differently and no number moves. The first implementation of that setting
+actually violated this — it rendered 1e58 as `10e58`, a number ten times larger,
+which would have made the setting a silent cheat rather than a cosmetic one.
 
 ### Two independent versions
 

@@ -1,9 +1,9 @@
 {
   "name": "idev-admin",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
-  "description": "IDEV : ADMIN — an incremental/idle game about shipping software.",
+  "description": "IDEV : ADMIN β€” an incremental/idle game about shipping software.",
   "engines": {
     "node": ">=22"
   },

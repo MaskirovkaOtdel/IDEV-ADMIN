@@ -136,7 +136,21 @@ describe('formulas – formatting', () => {
   it('uses short-scale suffixes', () => {
     expect(formatDecimal(dec(1_500_000))).toBe('1.5M');
     expect(formatDecimal(dec(2.5e12))).toBe('2.5T');
-    expect(formatDecimal(dec(1e100))).toMatch(/e\+100$/);
+  });
+
+  it('falls back past the last suffix, in the same spelling as standard notation', () => {
+    // Past 1e63 there is no suffix left, so it falls back to `1e100`.
+    //
+    // The assertion changed from `/e\+100$/` when notation became a setting, and
+    // the reason is consistency: the fallback used to hand back break_infinity's
+    // own `toExponential()`, which writes `1.00e+100`. Standard notation writes
+    // `1e100`. If switching the notation setting changed the glyphs, the setting
+    // would read as "changing the numbers" rather than "spelling them
+    // differently". One spelling, wherever the value happens to fall back.
+    expect(formatDecimal(dec(1e100))).toBe('1e100');
+    expect(formatDecimal(dec(1e100), 3, 'standard')).toBe(
+      formatDecimal(dec(1e100), 3, 'suffix')
+    );
   });
 
   it('handles negatives and NaN safely', () => {

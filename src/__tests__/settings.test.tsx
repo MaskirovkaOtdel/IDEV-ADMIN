@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, act, cleanup, screen } from '@testing-library/react';
+import { render, act, cleanup, screen, within } from '@testing-library/react';
 import App from '../App';
 import {
   DEFAULT_SETTINGS,
@@ -233,6 +233,41 @@ describe('the settings surface', () => {
     expect(JSON.parse(localStorage.getItem(KEY_SETTINGS)!).autosaveSeconds).toBe(30);
   });
 
+  it('changing the notation re-spells the numbers the player can see', async () => {
+    // The point of the setting is the rendered digits, so the test has to read the
+    // rendered digits. Asserting only that `settings.notation` flipped would pass
+    // with the preference wired to nothing at all, which is the exact defect the
+    // autosave test two lines below documents.
+    await mount();
+
+    // Grant AFTER mount: App hydrates on load, which replaces gameState wholesale,
+    // so a seed written before mount is silently discarded. That is a real trap --
+    // the first version of this test set `cash` (which is not a field) before
+    // mounting and asserted on an empty screen, passing for the wrong reason until
+    // it was rewritten to read `resources.cash` and grant post-hydrate.
+    await act(async () => {
+      useGameStore.getState().grantResources('cash', dec(3.79e9));
+    });
+    await openSettings();
+
+    // Whatever the current spelling is, find the node carrying the cash figure.
+    const cashNode = () =>
+      document.querySelector('.resource-value')?.textContent ?? '(not rendered)';
+
+    expect(cashNode(), 'baseline cash should read as a suffix').toBe('3.79B');
+
+    const standard = screen.getByRole('radio', { name: 'Standard' });
+    await act(async () => {
+      standard.click();
+    });
+
+    expect(settingsSnapshot().notation).toBe('standard');
+    expect(cashNode(), 'after choosing Standard').toBe('3.79e9');
+
+    // And it survives a reload, which is what makes it a setting rather than a toggle.
+    expect(JSON.parse(localStorage.getItem(KEY_SETTINGS)!).notation).toBe('standard');
+  });
+
   it('actually re-times the autosave, rather than being a decorative toggle', async () => {
     // A preference that is stored but never read is the worst outcome: it looks
     // like it works. The first version of this test only checked the value was
@@ -292,10 +327,20 @@ describe('the settings surface', () => {
     await mount();
     await openSettings();
 
-    const radios = screen.getAllByRole('radio');
-    const checked = radios.filter((r) => r.getAttribute('aria-checked') === 'true');
-    // One checked per group, and there are two groups.
-    expect(checked).toHaveLength(2);
+    // Exactly one checked radio PER GROUP. A bare count cannot tell "one in each
+    // of three groups" from "all three in one group and none in the others", and
+    // that distinction is the whole point of a radiogroup -- an unchecked group
+    // reads to a screen reader as "you have not chosen yet", which is a lie.
+    const groups = screen.getAllByRole('radiogroup');
+    expect(groups.length).toBeGreaterThanOrEqual(3);
+
+    for (const group of groups) {
+      const radios = within(group).getAllByRole('radio');
+      const checked = radios.filter((r) => r.getAttribute('aria-checked') === 'true');
+      const name = group.getAttribute('aria-label') ?? '(unlabelled group)';
+      expect(checked, `"${name}" has ${checked.length} checked, expected exactly 1`)
+        .toHaveLength(1);
+    }
   });
 
   it('every control is labelled', async () => {

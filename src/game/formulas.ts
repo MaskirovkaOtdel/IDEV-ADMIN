@@ -151,29 +151,172 @@ const SUFFIXES = [
   'UDc', 'DDc', 'TDc', 'QaDc', 'QiDc', 'SxDc', 'SpDc', 'OcDc', 'NoDc', 'Vg',
 ];
 
-/** Round to `digits` significant figures and render with a short-scale suffix. */
-export function formatDecimal(value: Decimal, digits = 3): string {
+/**
+ * How large numbers are rendered.
+ *
+ * Suffix, standard and engineering differ only in SPELLING. Every one of them
+ * denotes the same value, and the test suite asserts that for a spread of
+ * magnitudes -- notation is display, never arithmetic. That boundary matters: a
+ * notation setting that changed what a number means would be a cheat, silently.
+ *
+ *   suffix       3.79B, 1Qa, 10OcDc. Readable to about 1e21, then the suffixes
+ *                stop being English (`QaDc`, `SxDc`). Falls back to scientific
+ *                past 1e63.
+ *   standard     3.790e9, 1.000e15. Always unambiguous, never as quick to scan.
+ *   engineering  3.79E9, 1.0E15. Exponents stay multiples of three, so the mantissa
+ *                never runs 1-9999 and columns of numbers stay comparable.
+ */
+export type Notation = 'suffix' | 'standard' | 'engineering';
+
+export const NOTATIONS: { value: Notation; label: string; hint: string }[] = [
+  { value: 'suffix', label: 'Suffix', hint: '3.79B — readable up to about 1e21.' },
+  { value: 'standard', label: 'Standard', hint: '3.790e9 — never ambiguous.' },
+  { value: 'engineering', label: 'Engineering', hint: '3.79E9 — exponents stay multiples of 3.' },
+];
+
+const DEFAULT_NOTATION: Notation = 'suffix';
+
+/**
+ * Round to `digits` significant figures and render in `notation`.
+ *
+ * Defaults to the player's saved preference. Kept as a parameter rather than read
+ * inside so the test suite can render one value under every notation and compare --
+ * which is how "these are spellings of the same number" is actually checked.
+ */
+export function formatDecimal(
+  value: Decimal,
+  digits = 3,
+  notation: Notation = currentNotation()
+): string {
   if (isNaNDecimal(value)) return '—';
   if (value.eq(ZERO)) return '0';
-  if (value.lt(ZERO)) return '-' + formatDecimal(value.negate(), digits);
+  if (value.lt(ZERO)) return '-' + formatDecimal(value.negate(), digits, notation);
 
-  // Below 1000 show plain decimals (trimmed).
+  // Below 1000 every notation agrees, and a plain decimal is what all three mean.
   if (value.lt(1000)) {
     const fixed = value.toFixed(2);
     return fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
   }
 
-  const exponent = value.exponent;              // value = mantissa * 10^exponent
-  const tier = Math.floor(exponent / 3);
-  if (tier >= SUFFIXES.length) {
-    return value.toExponential(2);             // falls back to 1.23e+45 style
+  switch (notation) {
+    case 'standard':
+      return standardNotation(value, digits);
+    case 'engineering':
+      return engineeringNotation(value, digits);
+    case 'suffix':
+      return suffixNotation(value, digits);
+  }
+}
+
+/**
+ * Split into mantissa and exponent, normalised so the mantissa is in [1, base).
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS, CORRECTLY THIS TIME
+ * ---------------------------------------------------------------------------
+ * The first version of this file carried a comment claiming `Decimal.exponent` is
+ * unreliable and "reports 57 for 1e58". That was false. A sweep of 1500 values
+ * found zero disagreements between `Decimal.exponent` and `floor(log10(value))`,
+ * and deleting this normalisation entirely leaves every sample rendering
+ * correctly. The comment was written to explain a bug I had misdiagnosed.
+ *
+ * The real bug was in `standardNotation`: it divided by 10^(exponent rounded down
+ * to a multiple of three) and then labelled the result with the UNROUNDED
+ * exponent. For 1e58 that printed `10e58` -- which denotes 1e59, a different
+ * number. The divisor and the label disagreed.
+ *
+ * So the normalisation here is a guard, not a fix. It is kept because the cost is
+ * two comparisons and because the failure mode it protects against -- a mantissa
+ * that lands exactly on the tier boundary -- would be a cosmetic setting quietly
+ * changing what the player earns.
+ */
+function normalise(
+  value: Decimal,
+  base: number
+): { mantissa: Decimal; exponent: number } {
+  let exponent = Math.floor(value.log10());
+  let mantissa = value.div(Decimal.pow(10, exponent));
+
+  const limit = Decimal.fromNumber(base);
+  while (mantissa.greaterThanOrEqualTo(limit)) {
+    mantissa = mantissa.div(10);
+    exponent += 1;
+  }
+  while (mantissa.lessThan(1) && mantissa.greaterThan(ZERO)) {
+    mantissa = mantissa.times(10);
+    exponent -= 1;
   }
 
+  return { mantissa, exponent };
+}
+
+/** `3.790e9` — mantissa in 1-10, full exponent, unambiguous at any magnitude. */
+function standardNotation(value: Decimal, digits: number): string {
+  const { mantissa, exponent } = normalise(value, 10);
+  return `${trimZeros(mantissa.toPrecision(digits))}e${exponent}`;
+}
+
+/**
+ * `3.79E9` — exponent forced to a multiple of three.
+ *
+ * The mantissa therefore always lands in 1-999, which is what makes a column of
+ * engineering-notation numbers visually comparable. Standard notation's mantissa
+ * drifts across 1-9.99 as the exponent climbs, so digits do not line up.
+ */
+function engineeringNotation(value: Decimal, digits: number): string {
+  const rough = normalise(value, 10);
+  // Round the exponent DOWN to a multiple of three so the mantissa cannot fall
+  // below 1. Rounding up would make it 1000, which is the next tier's job.
+  const exponent = Math.floor(rough.exponent / 3) * 3;
+  const mantissa = value.div(Decimal.pow(10, exponent));
+  // Two decimals before the exponent leaves room for three significant figures
+  // once the exponent's digits are counted, which is the usual convention.
+  return `${trimZeros(mantissa.toPrecision(Math.max(2, digits)))}E${exponent}`;
+}
+
+/**
+ * `3.79B` — short-scale suffixes.
+ *
+ * Falls back to standard past the last suffix (1e63). That switch is silent, which
+ * is the honest argument for the notation setting: nothing is WRONG at 1e60, but
+ * `QaDc` is not a word, and the player has no say in it.
+ */
+function suffixNotation(value: Decimal, digits: number): string {
+  const { exponent } = normalise(value, 10);
+  const tier = Math.floor(exponent / 3);
+  if (tier >= SUFFIXES.length) return standardNotation(value, digits);
+
   const shifted = value.div(Decimal.pow(1000, tier));
-  let text = shifted.toPrecision(digits);
-  if (text.includes('e')) text = shifted.toFixed(digits);
-  if (text.includes('.')) text = text.replace(/\.?0+$/, '');
-  return text + SUFFIXES[tier];
+  return trimZeros(shifted.toPrecision(digits)) + SUFFIXES[tier];
+}
+
+/** `1.500` -> `1.5`, `1.000` -> `1`, `100` -> `100`. */
+function trimZeros(text: string): string {
+  return text.includes('.') ? text.replace(/\.?0+$/, '') : text;
+}
+
+/**
+ * The player's notation preference.
+ *
+ * Read through a getter that the settings module registers, rather than imported
+ * directly. That keeps `formulas.ts` free of any dependency on storage or
+ * preferences -- it is a pure formatting library, and the balance simulator (a
+ * Node tool with no browser) formats numbers with it.
+ */
+let notationProvider: () => Notation = () => DEFAULT_NOTATION;
+
+export function setNotationProvider(provider: () => Notation): void {
+  notationProvider = provider;
+}
+
+function currentNotation(): Notation {
+  try {
+    return notationProvider();
+  } catch {
+    // A provider that throws must not take a render down with it. Formatting is
+    // cosmetic; falling back to the default is always safe.
+    return DEFAULT_NOTATION;
+  }
 }
 
 /** Compact duration, e.g. `3h 12m`. */
