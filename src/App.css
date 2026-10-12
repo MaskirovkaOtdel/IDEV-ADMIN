@@ -43,7 +43,7 @@
 .brand-sub {
   margin: 0.15rem 0 0;
   font-size: 0.75rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .nav {
@@ -90,7 +90,7 @@
 
 .nav-hint {
   font-size: 0.72rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .sidebar-footer {
@@ -106,7 +106,7 @@
   border: none;
   padding: 0;
   font-size: 0.75rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
   text-decoration: underline;
 }
 
@@ -149,7 +149,7 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .resource-value {
@@ -165,7 +165,7 @@
 }
 
 .resource-hint {
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-family: var(--sans);
 }
 
@@ -245,7 +245,7 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .chip-value {
@@ -488,7 +488,7 @@
 .meter-label {
   font-family: var(--mono);
   font-size: 0.68rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -500,7 +500,7 @@
   margin: 0.3rem 0 0;
   font-family: var(--mono);
   font-size: 0.68rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 /* Secondary figure, e.g. the cash a LoC rate is worth.
@@ -510,7 +510,7 @@
  * read as a layout fault rather than a conversion. */
 .stat-aside {
   display: block;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: 0.85em;
   white-space: nowrap;
 }
@@ -594,7 +594,7 @@
 .card-flavor {
   margin: 0.2rem 0 0;
   font-size: 0.78rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .owned-badge {
@@ -616,7 +616,7 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .card-stats dd {
@@ -635,7 +635,7 @@
 .card-error {
   margin: 0;
   font-size: 0.75rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .badge {
@@ -645,7 +645,7 @@
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
   border: 1px solid var(--border);
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .badge-ready {
@@ -753,7 +753,7 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .stat-value {
@@ -766,7 +766,7 @@
 }
 
 .stat-value.muted {
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .prestige-hint {
@@ -924,7 +924,7 @@
 }
 
 .save-summary dt {
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .save-summary dd {
@@ -1056,7 +1056,7 @@
 
 .setting-group > legend {
   padding: 0 0 0.5rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1292,7 +1292,7 @@
 /* Locked-upgrade preview: why it is not buyable yet, in the game's own words. */
 .upgrade-locked-reason {
   margin: 0.45rem 0 0;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-family: var(--mono);
   font-size: 0.72rem;
   line-height: 1.45;
@@ -1368,14 +1368,14 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.75rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .save-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--text-faint);
+  background: var(--text-dim);
 }
 
 .save-status-saved .save-dot {
@@ -1423,7 +1423,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-dim);
   margin-bottom: 0.5rem;
 }
 
@@ -1473,7 +1473,7 @@
 }
 
 .debug-state dt {
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .debug-state dd {
@@ -1483,7 +1483,7 @@
 .debug-note {
   margin: 0.35rem 0 0;
   font-size: 0.7rem;
-  color: var(--text-faint);
+  color: var(--text-dim);
   word-break: break-all;
 }
 
