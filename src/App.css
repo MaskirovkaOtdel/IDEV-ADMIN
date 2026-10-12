@@ -390,62 +390,22 @@
  *
  * Every rule here is suppressed under prefers-reduced-motion below. */
 
-/* Purchase: a phosphor bloom on the card that was bought.
- *
- * Sized for perception, not for restraint. The first version spread the shadow
- * to 14px over 240ms and was reported as invisible -- fourteen pixels of glow on
- * a dark card, gone in a quarter second. It also animated only an outline, which
- * has almost no area to catch the eye.
- *
- * So this washes the card's background as well as blooming its edge. Two
- * properties carry the effect instead of one: the wash has real area, and the
- * bloom has reach. Duration is up to 380ms because a flash shorter than about a
- * third of a second reads as a flicker rather than a response.
- */
-@keyframes flash-bought {
-  0% {
-    box-shadow: 0 0 0 0 rgba(134, 59, 255, 0.5);
-    border-color: var(--accent-action);
-    background-color: rgba(134, 59, 255, 0.22);
-  }
-  55% {
-    background-color: rgba(134, 59, 255, 0.12);
-  }
-  100% {
-    box-shadow: 0 0 0 28px rgba(134, 59, 255, 0);
-    border-color: var(--state-affordable-line);
-    background-color: rgba(0, 0, 0, 0);
-  }
-}
-
+/* Purchase pop: a card that was just bought scales up with a slight overshoot
+   before settling. The previous version animated a box-shadow bloom and a
+   background wash; the shadow had almost no area to catch the eye and the wash
+   was subtle on a dark card. cf-zoom-bounce scales the entire card, which is
+   unmistakable. Duration is 380ms because a pop shorter than about a third of a
+   second reads as a flicker rather than a response. */
 .card.just-bought {
-  animation: flash-bought 380ms var(--ease-out);
+  animation: cf-zoom-bounce 380ms var(--ease-out);
 }
 
 /* Unlock: a generator arriving is the moment the game pays the player, so it
-   gets the loudest treatment in the app. Slides in from the left edge it would
-   have appeared from. */
-@keyframes unlock-in {
-  0% {
-    opacity: 0;
-    transform: translateX(-22px);
-    box-shadow: -18px 0 0 0 rgba(134, 59, 255, 0.5);
-    background-color: rgba(134, 59, 255, 0.2);
-  }
-  60% {
-    box-shadow: -18px 0 0 0 rgba(134, 59, 255, 0.5);
-    background-color: rgba(134, 59, 255, 0.1);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-    box-shadow: var(--elev-2), 0 0 0 1px var(--state-affordable-soft);
-    background-color: rgba(0, 0, 0, 0);
-  }
-}
-
+   gets the loudest treatment in the app. cf-rise-in slides it up from below
+   with a slight scale, which reads as the card lifting into place rather than
+   sliding in from the side. */
 .card.just-unlocked {
-  animation: unlock-in 620ms var(--ease-out);
+  animation: cf-rise-in 620ms var(--ease-out);
   border-color: var(--state-affordable-line);
 }
 
@@ -594,11 +554,11 @@
    * purchase bloom, the arrival slide and the burn sweep, which are the effects
    * whose visibility was in question. */
   :root[data-motion='force'] .card.just-bought {
-    animation: flash-bought 380ms var(--ease-out);
+    animation: cf-zoom-bounce 380ms var(--ease-out);
   }
 
   :root[data-motion='force'] .card.just-unlocked {
-    animation: unlock-in 620ms var(--ease-out);
+    animation: cf-rise-in 620ms var(--ease-out);
   }
 
   :root[data-motion='force'] .workspace.is-burning {

@@ -1,0 +1,155 @@
+/* ---------------------------------------------------------------------------
+   Vendored motion — keyframes from cssframes.
+
+   Source: https://github.com/bilalmlkdev/cssframes
+   Licence: MIT (Copyright (c) 2026 Bilal Malik)
+   Vendored: 2026-10-12, v0.6.1
+
+   The MIT licence requires that the copyright notice and permission text be
+   included in all copies or substantial portions of the Software. The full
+   text is reproduced here and applies ONLY to the keyframes in this file —
+   not to any other code in this project.
+
+   ---------------------------------------------------------------------------
+   MIT License
+
+   Copyright (c) 2026 Bilal Malik
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+   ---------------------------------------------------------------------------
+
+   WHY THIS FILE EXISTS
+   --------------------
+   cssframes is a library of pure-CSS keyframe animations. Six of its keyframes
+   are vendored here rather than installed as a dependency because:
+
+     • The project has no animation runtime and adding one for six keyframes
+       would be a dependency with a supply-chain surface and a bundle cost, in
+       exchange for CSS that can be copied verbatim.
+     • The keyframes are tuned to compositor-friendly properties
+       (translate3d, scale, opacity) and ship with a prefers-reduced-motion
+       block, so they slot into the existing motion architecture without
+       weakening it.
+
+   WHAT WAS TAKEN, AND WHAT WAS DELIBERATELY NOT
+   ---------------------------------------------
+   Taken (6):
+     cf-rise-in        — generator arrival (replaces unlock-in)
+     cf-zoom-bounce    — purchase pop (replaces flash-bought)
+     cf-slide-in-up    — panel / tab transitions (new)
+     cf-pulse          — affordability state (new, one-shot)
+     cf-fade-in-up     — achievement unlock announcement (new)
+     cf-type-in        — offline report header (new, one-shot)
+
+   Rejected, with reasons:
+     cf-hue-cycle       — infinite filter: hue-rotate is a permanent paint cost
+     cf-flicker         — opacity flickering (photosensitivity)
+     cf-flash           — full opacity-0 flashes (WCAG 2.3.1)
+     cf-spin, cf-ping, cf-bob, cf-pulse-ring, cf-float
+                       — infinite ambient loops, cost with no information
+
+   The rejected animations are absent from this file. If someone re-adds them
+   later, the test in src/__tests__/motion-vendored.test.ts will catch it.
+   --------------------------------------------------------------------------- */
+
+/* --- vendored keyframes ----------------------------------------------------
+   These are the raw @keyframes rules from cssframes. They are used by the
+   existing classes in App.css and by the new classes added alongside them.
+   The animation-name values have been kept as-is so the vendored source is
+   recognisable and traceable. */
+
+@keyframes cf-rise-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cf-zoom-bounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  80% {
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cf-slide-in-up {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cf-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes cf-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes cf-type-in {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* --- vendored reduced-motion block -----------------------------------------
+   cssframes ships its own prefers-reduced-motion block. It is included here
+   for completeness so the vendored file is self-contained, but in this project
+   the reduced-motion handling lives in App.css (which targets the classes that
+   actually use these keyframes). This block is a safety net for anyone who
+   imports the vendored file standalone. */
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-animated {
+    animation: none;
+  }
+}

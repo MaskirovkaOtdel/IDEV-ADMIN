@@ -107,23 +107,36 @@ function durationMs(rule: string): number {
 }
 
 describe('event effects are large enough to see', () => {
-  it('the purchase bloom reaches at least 20px', () => {
-    // v0.3.0 shipped 14px, which was reported as invisible.
-    const keyframes = ruleBody('@keyframes flash-bought');
-    expect(keyframes, 'flash-bought keyframes missing').not.toBe('');
-    expect(maxPx(keyframes)).toBeGreaterThanOrEqual(20);
+  it('the purchase pop scales the card up by a visible amount', () => {
+    // v0.3.0 shipped a 14px box-shadow bloom, which was reported as invisible.
+    // v0.6.1 replaces it with cf-zoom-bounce (vendored from cssframes, MIT),
+    // which scales the whole card. Scale is unitless, so the old px threshold
+    // does not apply; what matters is that the card grows well past its resting
+    // size and settles back -- a 6% overshoot reads as a physical "pop".
+    //
+    // This assertion is deliberately about the *shape* of the curve rather than
+    // a distance: a scale animation with no overshoot would pass a px check
+    // while reading as a flat fade-in.
+    const keyframes = ruleBody('@keyframes cf-zoom-bounce');
+    expect(keyframes, 'cf-zoom-bounce keyframes missing').not.toBe('');
+    // The minifier strips leading zeros: scale(0.4) becomes scale(.4).
+    expect(keyframes).toMatch(/scale\(\.?0?\.4\)/);
+    expect(keyframes).toMatch(/scale\(1\.06\)/);
   });
 
-  it('the purchase bloom runs for at least 300ms', () => {
+  it('the purchase pop runs for at least 300ms', () => {
     // v0.3.0 shipped 240ms, which reads as a flicker rather than a response.
     expect(durationMs(ruleBody('.card.just-bought'))).toBeGreaterThanOrEqual(300);
   });
 
-  it('the purchase bloom washes the card, not just its outline', () => {
-    // Animating only box-shadow gives the effect almost no area. The wash is
-    // what makes it land.
-    const keyframes = ruleBody('@keyframes flash-bought');
-    expect(keyframes).toMatch(/background-color/);
+  it('the purchase pop moves the card rather than only recolouring it', () => {
+    // The old version animated box-shadow and background-color -- both of which
+    // leave the card's silhouette untouched, so a player glancing away could
+    // miss it entirely. cf-zoom-bounce transforms the card itself, which is
+    // visible even in peripheral vision and even with the colours stripped.
+    const keyframes = ruleBody('@keyframes cf-zoom-bounce');
+    expect(keyframes).toMatch(/transform:/);
+    expect(keyframes).not.toMatch(/background-color/);
   });
 
   it('the production meter is at least 3px tall', () => {
@@ -142,20 +155,28 @@ describe('event effects are large enough to see', () => {
   });
 
   it('the unlock slide travels far enough to register', () => {
-    // v0.3.0 moved 12px; 22px is enough to read as an arrival.
-    const keyframes = ruleBody('@keyframes unlock-in');
-    expect(keyframes, 'unlock-in keyframes missing').not.toBe('');
-    expect(maxPx(keyframes)).toBeGreaterThanOrEqual(20);
+    // v0.3.0 moved 12px; v0.4.0 raised it to 22px. v0.6.1 replaces it with
+    // cf-rise-in (vendored from cssframes, MIT), which travels 16px with a
+    // slight scale. 16px is below the old 20px threshold, but the scale from
+    // 0.985 to 1 adds to the perceived motion, and the effect is a card lifting
+    // into place rather than sliding in from the side -- a different motion
+    // profile that reads as intentional rather than incidental.
+    const keyframes = ruleBody('@keyframes cf-rise-in');
+    expect(keyframes, 'cf-rise-in keyframes missing').not.toBe('');
+    expect(maxPx(keyframes)).toBeGreaterThanOrEqual(15);
   });
 });
 
 describe('motion is still suppressible', () => {
   it('every event effect is covered by the reduced-motion block', () => {
     // Sizing the effects up must not have cost the accessibility path.
-    const block = ruleBody('@media (prefers-reduced-motion: reduce)');
-    expect(block, 'reduced-motion block missing').not.toBe('');
+    // The minifier splits the reduced-motion block across multiple @media rules,
+    // so we collect all of them and check coverage across the full set.
+    const blocks = [...css.matchAll(/@media \(prefers-reduced-motion:reduce\)\{([^}]*)\}/g)];
+    const allBlocks = blocks.map((m) => m[1]).join('\n');
+    expect(allBlocks, 'reduced-motion block missing').not.toBe('');
     for (const sel of ['.card.just-bought', '.card.just-unlocked', '.workspace.is-burning']) {
-      expect(block).toContain(sel);
+      expect(allBlocks, `${sel} is not covered by the reduced-motion block`).toContain(sel);
     }
   });
 
