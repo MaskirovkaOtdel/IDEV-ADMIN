@@ -19,6 +19,7 @@ import { UPGRADE_DEFS } from './upgrades';
 import { PERM_UPGRADE_DEFS } from './permUpgrades';
 import { CURRENT_SAVE_VERSION } from './prestige';
 import { requireGenDef } from './generators';
+import { parseAchievementRecord } from './achievements';
 
 const KNOWN_UPGRADE_IDS = new Set<UpgradeId>(UPGRADE_DEFS.map((u) => u.id));
 const KNOWN_PERM_IDS = new Set<PermUpgradeId>(PERM_UPGRADE_DEFS.map((u) => u.id));
@@ -64,6 +65,7 @@ export function createInitialState(now: number = Date.now()): GameState {
       bestRunLifetimeCash: ZERO,
       baselineLifetimeCash: ZERO,
     },
+    achievements: {},
     lastTickAt: now,
     tickVersion: 0,
   };
@@ -140,6 +142,7 @@ export function serializeState(state: GameState, now: number = Date.now()): stri
       bestRunLifetimeCash: state.prestige.bestRunLifetimeCash.toString(),
       baselineLifetimeCash: state.prestige.baselineLifetimeCash.toString(),
     },
+    achievements: state.achievements,
     lastTickAt: numSafe(state.lastTickAt, now),
     tickVersion: intSafe(state.tickVersion, 0),
   };
@@ -201,6 +204,10 @@ function migrateBlob(raw: Record<string, unknown>, now: number): SaveBlob {
         ZERO
       ).toString(),
     },
+    // Absent in every save predating the achievements layer, which is the whole
+    // reason it does not force a schema bump. Validated rather than trusted: an
+    // unknown id or a NaN timestamp is dropped.
+    achievements: parseAchievementRecord(raw.achievements),
     lastTickAt: numSafe(raw.lastTickAt, now),
     tickVersion: intSafe(raw.tickVersion, 0),
   };
@@ -293,6 +300,7 @@ export function deserializeState(json: string, now: number = Date.now()): GameSt
       bestRunLifetimeCash: safeResource(blob.prestige.bestRunLifetimeCash),
       baselineLifetimeCash: safeResource(blob.prestige.baselineLifetimeCash),
     },
+    achievements: parseAchievementRecord(blob.achievements),
     lastTickAt: numSafe(blob.lastTickAt, now),
     tickVersion: intSafe(blob.tickVersion, 0),
   };

@@ -205,6 +205,12 @@ export function resetForPrestige(state: GameState, now: number = Date.now()): Ga
       // gates and future prestige payouts.
       lifetimeCash: state.resources.lifetimeCash,
     },
+    // Achievements are the one thing a reset does NOT touch. Six of the ten are
+    // measured against generator counts or run upgrades, both of which this
+    // function zeroes -- so dropping the record would silently un-earn a player's
+    // history every time they prestiged. The store only ever adds to it; see
+    // achievements.ts on monotonicity.
+    achievements: state.achievements,
     generators: freshGenerators(state),
     upgrades: { purchased: [] },
     stats: {

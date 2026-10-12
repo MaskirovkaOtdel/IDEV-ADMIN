@@ -144,6 +144,18 @@ export interface GameState {
   upgrades: UpgradeState;
   stats: RunStats;
   prestige: PrestigeState;
+  /**
+   * Achievements already earned: id -> epoch ms.
+   *
+   * Monotonic by contract. A prestige wipes generators and run upgrades, so an
+   * achievement keyed on those would be un-earned by resetting; the store only
+   * ever adds to this record, and the condition decides admission rather than
+   * continued membership.
+   *
+   * Empty in every save written before this existed, which is why adding it is
+   * additive and needs no `CURRENT_SAVE_VERSION` bump.
+   */
+  achievements: Record<string, number>;
   /** epoch ms of the last processed tick (offline seed). */
   lastTickAt: number;
   /** monotonically increased each tick, drives UI re-renders. */
@@ -265,6 +277,15 @@ export interface SaveBlob {
     bestRunLifetimeCash: string;
     baselineLifetimeCash: string;
   };
+  /**
+   * Earned achievements: id -> epoch ms earned.
+   *
+   * Sparse, and OPTIONAL on the blob: absent means locked, so a save written
+   * before achievements existed is still a valid v1 save. That is what keeps this
+   * additive and avoids forcing a `CURRENT_SAVE_VERSION` bump for a layer that
+   * changes no number the player earns.
+   */
+  achievements?: Record<string, number>;
   lastTickAt: number;
   tickVersion: number;
 }

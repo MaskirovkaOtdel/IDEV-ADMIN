@@ -134,6 +134,40 @@ describe('the event layer is announced, not just animated', () => {
     expect(liveRegion()?.textContent).toMatch(/Hired Junior Dev/);
   });
 
+  it('speaks both messages when two events land in the same window', async () => {
+    // Regression. The region used to be last-writer-wins: two events inside the
+    // 400ms coalescing window meant the second silently replaced the first. It went
+    // unnoticed because the pairs that mattered never co-occurred — until
+    // achievements arrived, and then they co-occurred constantly. Buying the first
+    // generator both HIRES somebody and EARNS a milestone, so every first
+    // purchase announced "Achievement unlocked" and swallowed the hire.
+    //
+    // The reset case is worse: "Achievement unlocked: Burn It" replacing "Run
+    // reset. Tech Debt banked" announces the milestone and drops the description
+    // of the destructive change the player just made.
+    await mount();
+
+    await act(async () => {
+      const before = useGameStore.getState().gameState.generators.juniorDev.owned;
+      useGameStore.setState((s) => ({
+        gameState: {
+          ...s.gameState,
+          generators: {
+            ...s.gameState.generators,
+            juniorDev: { owned: before + 1, unlocked: true },
+          },
+        },
+        // Both queued inside the same window: a hire and a milestone.
+        pendingAchievements: ['first_hire'],
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    const spoken = liveRegion()?.textContent ?? '';
+    expect(spoken, 'the hire announcement was lost').toMatch(/Hired Junior Dev/);
+    expect(spoken, 'the achievement announcement was lost').toMatch(/Hello, World/);
+  });
+
   it('stays silent on mount rather than greeting the player with old purchases', async () => {
     // The property that matters: a save loaded with generators must not announce
     // them. On the first pass every generator already has a count, and treating

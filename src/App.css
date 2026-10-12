@@ -1191,6 +1191,144 @@
   align-items: stretch;
 }
 
+/* Achievements ----------------------------------------------------------------
+   Locked rows keep full contrast on the icon and dim only the surrounding text,
+   because the icon is what tells you WHICH milestone you are working toward. A
+   uniformly dimmed row is the v0.3.0 "locked means locked" problem: the thing you
+   cannot use yet should not be the most colourful thing on screen.
+
+   The earned state gets an accent border rather than a colour swap, for the same
+   reason borders carry state elsewhere in this stylesheet. */
+
+.achievements-panel {
+  max-width: 62rem;
+}
+
+.achievement-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.achievement-count strong {
+  color: var(--accent);
+  font-size: 1.15rem;
+}
+
+.achievement-count-bar {
+  flex: 1;
+  height: 4px;
+  margin-left: 0.6rem;
+  border-radius: 2px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.achievement-count-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--motion-fast) var(--ease-out);
+}
+
+.achievement-tier {
+  margin-bottom: 1.4rem;
+}
+
+.achievement-tier-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.achievement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.achievement {
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+
+.achievement.is-earned {
+  border-color: var(--accent-line);
+}
+
+.achievement-icon {
+  flex: none;
+  width: 1.6rem;
+  font-size: 1.15rem;
+  line-height: 1.4rem;
+  text-align: center;
+}
+
+.achievement-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.achievement-status {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.achievement.is-earned .achievement-status {
+  color: var(--accent);
+}
+
+.achievement-desc {
+  margin: 0.1rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+/* The progress rule under a locked row. 3px rather than the meter's 4px: this
+   sits in a list of eight rows, not alone under a single card's name. */
+.achievement-bar {
+  margin-top: 0.35rem;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.achievement-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .achievement-count-fill {
+    transition: none;
+  }
+}
+
 /* Locked-upgrade preview: why it is not buyable yet, in the game's own words. */
 .upgrade-locked-reason {
   margin: 0.45rem 0 0;

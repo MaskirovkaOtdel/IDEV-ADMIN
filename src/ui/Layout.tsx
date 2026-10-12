@@ -10,13 +10,15 @@ import { HeaderBar } from './HeaderBar';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import { GeneratorsPanel } from './GeneratorsPanel';
 import { UpgradesPanel } from './UpgradesPanel';
+import { AchievementsPanel } from './AchievementsPanel';
 import { PrestigePanel } from './PrestigePanel';
 import { useGameStore } from '../game/gameStore';
 import { techDebtForLifetimeCash } from '../game/prestige';
+import { ACHIEVEMENTS, unlockedCount } from '../game/achievements';
 import { formatDecimal } from '../game/formulas';
 import { dec, ZERO } from '../game/decimal';
 
-export type TabId = 'generators' | 'upgrades' | 'prestige';
+export type TabId = 'generators' | 'upgrades' | 'achievements' | 'prestige';
 
 export interface LayoutProps {
   onOpenPrestige: () => void;
@@ -31,6 +33,7 @@ const TABS: { id: TabId; label: string; hint: string }[] = [
   { id: 'generators', label: 'Generators', hint: 'Hire the team' },
   { id: 'upgrades', label: 'Upgrades', hint: 'Buy leverage' },
   { id: 'prestige', label: 'Prestige', hint: 'Burn it for Tech Debt' },
+  { id: 'achievements', label: 'Achievements', hint: 'What you have done' },
 ];
 
 /** Cheapest permanent upgrade. Below this a reset banks nothing spendable. */
@@ -55,6 +58,13 @@ export function Layout({ onOpenPrestige, onOpenDebug, onOpenSettings, burning }:
     return techDebtForLifetimeCash(earned.lessThan(ZERO) ? ZERO : earned);
   }, [lifetimeCash, bankedLifetimeCash]);
 
+  // Achievements get a live count for the same reason Prestige got one. A static
+  // "What you have done" hint is an answer only to a question nobody asked; the
+  // useful fact is how far along the list is, from any tab.
+  const achievements = useGameStore((s) => s.gameState.achievements);
+  const earnedAchievements = useMemo(() => unlockedCount(achievements), [achievements]);
+  const hasPendingAchievement = useGameStore((s) => s.pendingAchievements.length > 0);
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -69,29 +79,38 @@ export function Layout({ onOpenPrestige, onOpenDebug, onOpenSettings, burning }:
         </div>
 
         <nav className="nav" aria-label="Game sections">
-          {TABS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={`nav-item ${tab === entry.id ? 'active' : ''} ${
-                entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH) ? 'nav-item-actionable' : ''
-              }`}
-              onClick={() => setTab(entry.id)}
-              aria-current={tab === entry.id}
-            >
-              <span className="nav-label">
-                {entry.label}
-                {entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH) && (
-                  <span className="nav-dot" aria-hidden="true" />
-                )}
-              </span>
-              <span className="nav-hint">
-                {entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH)
-                  ? `${formatDecimal(pendingTechDebt)} debt ready`
-                  : entry.hint}
-              </span>
-            </button>
-          ))}
+          {TABS.map((entry) => {
+            const actionable =
+              entry.id === 'prestige'
+                ? pendingTechDebt.gt(RESET_WORTH)
+                : entry.id === 'achievements'
+                  ? hasPendingAchievement
+                  : false;
+            const hint =
+              entry.id === 'prestige' && pendingTechDebt.gt(RESET_WORTH)
+                ? `${formatDecimal(pendingTechDebt)} debt ready`
+                : entry.id === 'achievements'
+                  ? `${earnedAchievements} / ${ACHIEVEMENTS.length}`
+                  : entry.hint;
+
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                className={`nav-item ${tab === entry.id ? 'active' : ''} ${
+                  actionable ? 'nav-item-actionable' : ''
+                }`}
+                onClick={() => setTab(entry.id)}
+                aria-current={tab === entry.id}
+              >
+                <span className="nav-label">
+                  {entry.label}
+                  {actionable && <span className="nav-dot" aria-hidden="true" />}
+                </span>
+                <span className="nav-hint">{hint}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
@@ -150,6 +169,7 @@ export function Layout({ onOpenPrestige, onOpenDebug, onOpenSettings, burning }:
         <div className="workspace-content">
           {tab === 'generators' && <GeneratorsPanel />}
           {tab === 'upgrades' && <UpgradesPanel />}
+          {tab === 'achievements' && <AchievementsPanel />}
           {tab === 'prestige' && (
             <PrestigePanel onOpenResetModal={onOpenPrestige} />
           )}

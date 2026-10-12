@@ -22,6 +22,7 @@ import type {
   ResourceId,
   UpgradeId,
 } from './types';
+import { checkAchievements, type AchievementId } from './achievements';
 import { GENERATOR_IDS } from './types';
 import { dec, ZERO } from './decimal';
 import { computeProductionSnapshot, engineTick, MAX_DELTA_SECONDS } from './engine';
@@ -100,6 +101,48 @@ function cloneForEngine(state: GameState): GameState {
   };
 }
 
+/**
+ * Fold newly-met achievements into a state, returning any that just unlocked.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY EVERY MUTATION PATH MUST CALL THIS
+ * ---------------------------------------------------------------------------
+ * Achievements are passive. Three of the ten (`codebase`, `breakeven`,
+ * `series_a`) are measured against lifetime totals that climb from production
+ * alone — nothing you click unlocks them. So the check cannot live only on the
+ * action paths; it has to run on `tick`.
+ *
+ * That inverts the usual risk: not "one path forgot to check" but "a path checked
+ * and a second one did not", which is invisible from either side. The defence is
+ * `achievements.test.ts`, which drives every mutating action in turn and asserts
+ * each one can earn something — a wiring test rather than a unit test.
+ *
+ * Returns the SAME state reference when nothing unlocked, so an unchanged
+ * achievement set cannot invalidate selectors on every frame.
+ */
+function applyAchievements(
+  state: GameState,
+  now: number
+): { state: GameState; newlyUnlocked: AchievementId[] } {
+  const { record, newlyUnlocked } = checkAchievements(state, state.achievements, now);
+  if (newlyUnlocked.length === 0) return { state, newlyUnlocked };
+  return { state: { ...state, achievements: record }, newlyUnlocked };
+}
+
+/**
+ * Fold achievements into a freshly-built state and hand back both halves.
+ *
+ * Used by the explicit actions so each one reads as a single step:
+ * `const { state: next, pending } = withAchievements(candidate);`
+ */
+function withAchievements(candidate: GameState): {
+  state: GameState;
+  pending: AchievementId[];
+} {
+  const { state, newlyUnlocked } = applyAchievements(candidate, Date.now());
+  return { state, pending: newlyUnlocked };
+}
+
 export interface GameStoreState {
   gameState: GameState;
   transient: TransientState;
@@ -121,6 +164,18 @@ export interface GameStoreState {
    * themselves, and a player who reloaded a moment later should see nothing.
    */
   pendingArrivals: GeneratorId[];
+  /**
+   * Achievements earned but not yet announced, cleared by the UI.
+   *
+   * Mirrors `pendingArrivals` deliberately: both are "something happened that the
+   * player should be told about", both are drained by the presentation layer, and
+   * neither is a save concern.
+   *
+   * Empty after `hydrate` on purpose. A returning player already gets the offline
+   * dialog naming what they earned, and the achievements panel lists everything;
+   * announcing a backlog of milestones on top of that is noise, not news.
+   */
+  pendingAchievements: AchievementId[];
   /** Set when a load rejected a save, so the UI can warn the player. */
   loadWarning: string | null;
   /** How many seconds of real play time this session (not persisted until save). */
@@ -160,6 +215,11 @@ export interface GameStoreState {
    * moment: the modal is dismissed immediately, the arrivals play after it.
    */
   clearPendingArrivals: () => void;
+  /**
+   * Called once the unlock has been announced, so the next tick does not announce
+   * it again. Same contract as `clearPendingArrivals`, for the same reason.
+   */
+  clearPendingAchievements: () => void;
   setSaveStatus: (status: TransientState['save']['status']) => void;
 }
 
@@ -187,6 +247,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
   },
   offlineReport: null,
   pendingArrivals: [],
+  pendingAchievements: [],
   loadWarning: null,
   sessionSeconds: 0,
 
@@ -203,13 +264,21 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       // production snapshot so the UI shows real rates before the first tick.
       const anchored: GameState = { ...result.state, lastTickAt: now };
       const production = computeProductionSnapshot(anchored);
+      // Achievements are still credited here. "Too brief an absence" is a claim
+      // about the OFFLINE REPORT, not about whether the loaded save already met a
+      // milestone — a save hand-edited or imported from elsewhere can arrive with
+      // its conditions met and a two-second timestamp gap. Left out of this branch,
+      // the next tick would quietly repair it, which hides the omission rather
+      // than preventing it.
+      const earned = applyAchievements(anchored, now);
       set({
-        gameState: anchored,
-        transient: deriveTransient(anchored, { ...get().transient, production }),
+        gameState: earned.state,
+        transient: deriveTransient(earned.state, { ...get().transient, production }),
         loadWarning: result.error ?? null,
         offlineReport: null,
         // Too brief an absence to have unlocked anything.
         pendingArrivals: [],
+        pendingAchievements: [],
       });
       return result.source;
     }
@@ -233,14 +302,21 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       (id) => !unlockedBefore.has(id) && state.generators[id].unlocked
     );
 
+    // Credit the achievements the offline walk earned, but do NOT announce them.
+    // The modal is already telling the player what they earned while away, and a
+    // backlog of "Achievement unlocked" announcements stacked on top of it is
+    // noise. The panel still shows them; they are simply not news on return.
+    const earned = applyAchievements(state, now);
+
     set({
-      gameState: state,
-      transient: deriveTransient(state, { ...get().transient, production }),
+      gameState: earned.state,
+      transient: deriveTransient(earned.state, { ...get().transient, production }),
       loadWarning: result.error ?? null,
       offlineReport: report.trivial ? null : report,
       // Only meaningful alongside a report: without one the player was away too
       // briefly for anything to have unlocked.
       pendingArrivals: report.trivial ? [] : arrivals,
+      pendingAchievements: [],
     });
     return result.source;
   },
@@ -255,11 +331,15 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
 
     const draft = cloneForEngine(gameState);
     const production = engineTick(draft, clamped);
+    // The only path that can earn the lifetime-total achievements, since those
+    // climb from production rather than from anything the player clicks.
+    const { state: next, newlyUnlocked } = applyAchievements(draft, Date.now());
 
     set({
-      gameState: draft,
-      transient: { ...transient, production, lastTickAt: draft.lastTickAt, tickVersion: draft.tickVersion },
+      gameState: next,
+      transient: { ...transient, production, lastTickAt: next.lastTickAt, tickVersion: next.tickVersion },
       sessionSeconds: get().sessionSeconds + clamped,
+      ...(newlyUnlocked.length > 0 ? { pendingAchievements: newlyUnlocked } : {}),
     });
   },
 
@@ -273,18 +353,20 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const now = Date.now();
     const { state, report } = applyOfflineProgress(get().gameState, elapsedMs, now);
     const production = engineTick(state, 0, now);
+    const { state: earned, pending } = withAchievements(state);
 
     set({
-      gameState: state,
+      gameState: earned,
       transient: {
         ...get().transient,
         production,
-        lastTickAt: state.lastTickAt,
-        tickVersion: state.tickVersion,
+        lastTickAt: earned.lastTickAt,
+        tickVersion: earned.tickVersion,
       },
       // Only interrupt with a modal when the player was away long enough and
       // actually earned something.
       offlineReport: report.trivial ? null : report,
+      pendingAchievements: pending,
     });
   },
 
@@ -303,9 +385,11 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     };
     // Refresh the snapshot so cards reflect the new stock immediately.
     const production = computeProductionSnapshot(next);
+    const { state: withEarned, pending } = withAchievements(next);
     set({
-      gameState: next,
-      transient: { ...transient, production, tickVersion: next.tickVersion },
+      gameState: withEarned,
+      transient: { ...transient, production, tickVersion: withEarned.tickVersion },
+      pendingAchievements: pending,
     });
   },
 
@@ -346,7 +430,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const resources = { ...gameState.resources, cash: gameState.resources.cash.minus(cost) };
     const stats = { ...gameState.stats, manualClicks: gameState.stats.manualClicks + 1 };
 
-    const next: GameState = {
+    const candidate: GameState = {
       ...gameState,
       generators,
       resources,
@@ -354,9 +438,12 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       tickVersion: gameState.tickVersion + 1,
     };
 
+    const { state: next, pending } = withAchievements(candidate);
+
     set({
       gameState: next,
       transient: { ...transient, tickVersion: next.tickVersion },
+      pendingAchievements: pending,
     });
     return { ok: true, count };
   },
@@ -380,13 +467,15 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     } as GameState['resources'];
     const upgrades = { purchased: [...gameState.upgrades.purchased, id] };
 
-    const next: GameState = {
+    const candidate: GameState = {
       ...gameState,
       resources,
       upgrades,
       stats: { ...gameState.stats, manualClicks: gameState.stats.manualClicks + 1 },
       tickVersion: gameState.tickVersion + 1,
     };
+
+    const { state: next, pending } = withAchievements(candidate);
 
     // Re-derive so a newly applicable generator unlock shows up immediately.
     const production = engineTick(next, 0, next.lastTickAt);
@@ -398,6 +487,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         production,
         tickVersion: next.tickVersion,
       },
+      pendingAchievements: pending,
     });
     return OK;
   },
@@ -409,7 +499,8 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const { gameState, transient } = get();
     if (!canPrestige(gameState)) return { ok: false, error: 'Not enough lifetime cash to reset' };
 
-    const next = resetForPrestige(gameState);
+    const reset = resetForPrestige(gameState);
+    const { state: next, pending } = withAchievements(reset);
     const production = engineTick(next, 0, next.lastTickAt);
 
     set({
@@ -420,6 +511,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         tickVersion: next.tickVersion,
       },
       sessionSeconds: 0,
+      pendingAchievements: pending,
     });
     return OK;
   },
@@ -432,9 +524,10 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
     const cost = permUpgradeCost(gameState, id);
     if (!cost) return { ok: false, error: `Unknown permanent upgrade: ${id}` };
 
-    const { state, ok, error } = purchasePermUpgrade(gameState, id);
+    const { state: purchased, ok, error } = purchasePermUpgrade(gameState, id);
     if (!ok) return { ok: false, error };
 
+    const { state, pending } = withAchievements(purchased);
     const production = engineTick(state, 0, state.lastTickAt);
     set({
       gameState: state,
@@ -443,6 +536,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         production,
         tickVersion: state.tickVersion,
       },
+      pendingAchievements: pending,
     });
     return { ok: true, spent: cost };
   },
@@ -481,6 +575,9 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
         // An imported save is a snapshot, not an absence -- nothing arrived while
         // the player was looking at a file picker.
         pendingArrivals: [],
+        // For the same reason: the imported file already records what it contains,
+        // so nothing new was earned and nothing should announce itself.
+        pendingAchievements: [],
         loadWarning: null,
       });
       return OK;
@@ -506,6 +603,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
       },
       offlineReport: null,
       pendingArrivals: [],
+      pendingAchievements: [],
       loadWarning: null,
       sessionSeconds: 0,
     });
@@ -516,6 +614,7 @@ export const useGameStore = create<GameStoreState>()((set, get) => ({
   // -------------------------------------------------------------------------
   dismissOfflineReport: () => set({ offlineReport: null }),
   clearPendingArrivals: () => set({ pendingArrivals: [] }),
+  clearPendingAchievements: () => set({ pendingAchievements: [] }),
 
   setSaveStatus: (status) =>
     set((s) => ({ transient: { ...s.transient, save: { ...s.transient.save, status } } })),

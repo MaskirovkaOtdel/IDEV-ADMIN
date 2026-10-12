@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../game/gameStore';
 import { GENERATOR_DEFS } from '../game/generators';
+import { ACHIEVEMENTS_BY_ID } from '../game/achievements';
 
 /** Coalescing window, ms. Two generators arriving in the same tick is one event. */
 const COALESCE_MS = 400;
@@ -30,20 +31,51 @@ export function LiveRegion() {
   const generators = useGameStore((s) => s.gameState.generators);
   const prestigeCount = useGameStore((s) => s.gameState.stats.prestigeCount);
   const pendingArrivals = useGameStore((s) => s.pendingArrivals);
+  const pendingAchievements = useGameStore((s) => s.pendingAchievements);
   const offlineReport = useGameStore((s) => s.offlineReport);
+  const clearPendingAchievements = useGameStore((s) => s.clearPendingAchievements);
 
   const [message, setMessage] = useState('');
   const lastPrestige = useRef(prestigeCount);
   const lastOwned = useRef<Record<string, number>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queue = useRef<string[]>([]);
 
+  /**
+   * Queue a message, flushing everything queued within the coalescing window as
+   * ONE utterance.
+   *
+   * WHY A QUEUE AND NOT LAST-WRITER-WINS
+   * ------------------------------------
+   * This used to clear the timer and set the new text, so two events inside the
+   * same 400ms window meant the second silently replaced the first. Nothing
+   * noticed, because the pairs that mattered never co-occurred: a purchase and an
+   * arrival are both rare in the same instant.
+   *
+   * Adding achievements made them co-occur constantly. Buying the first generator
+   * both hires somebody AND earns "Hello, World", so every single first purchase
+   * announced the achievement and swallowed the hire. Prestiging likewise
+   * announced "Burn It" instead of "Run reset. Tech Debt banked."
+   *
+   * The reset announcement is the more important of the two — it describes a
+   * destructive change the player just made — so losing it to a milestone is
+   * exactly backwards. Queuing keeps both, in the order they happened, and
+   * coalescing still does its real job: a burst of arrivals reads as one sentence
+   * rather than eight.
+   */
   const announce = (text: string) => {
+    queue.current.push(text);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setMessage(text), COALESCE_MS);
+    timer.current = setTimeout(() => {
+      const spoken = queue.current.join('. ').replace(/\.\s*\./g, '.');
+      queue.current = [];
+      setMessage(spoken);
+    }, COALESCE_MS);
   };
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+    queue.current = [];
   }, []);
 
   // Purchases: a count change means something was bought.
@@ -104,6 +136,31 @@ export function LiveRegion() {
     const spoken = hours >= 1 ? `${hours.toFixed(1)} hours` : `${Math.round(offlineReport.effectiveSeconds / 60)} minutes`;
     announce(`Welcome back. ${spoken} of production credited.`);
   }, [offlineReport]);
+
+  // Achievement unlocks. Deferred behind the same gate as arrivals: an unlock that
+  // rides in on the back of an offline report gets overwritten by that report's
+  // message, because the coalescing timer keeps only the last caller. The queue is
+  // drained by the UI rather than by this component, so the same unlock is never
+  // announced twice — a reload must not re-greet the player for a milestone they
+  // earned hours ago.
+  useEffect(() => {
+    if (pendingAchievements.length === 0) return;
+    if (offlineReport) return;
+
+    const names = pendingAchievements
+      .map((id) => ACHIEVEMENTS_BY_ID[id]?.name)
+      .filter(Boolean)
+      .join(', ');
+
+    clearPendingAchievements();
+    if (!names) return;
+
+    announce(
+      pendingAchievements.length === 1
+        ? `Achievement unlocked: ${names}`
+        : `${pendingAchievements.length} achievements unlocked: ${names}`
+    );
+  }, [offlineReport, pendingAchievements, clearPendingAchievements]);
 
   return (
     <div
