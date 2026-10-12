@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="IDEV : ADMIN">
+  <!--
+    Maskable variant.
+
+    A maskable icon is cropped by the host platform (Android applies a circle, a
+    squircle, or a rounded square), so the artwork must survive losing up to 20% of
+    its width on every side. Two changes from favicon.svg:
+
+      1. A solid background fills the whole canvas. Without it, a circular mask
+         would clip the bolt down to a thin sliver of transparent corners.
+      2. The bolt is scaled to ~55% and centred, so it stays inside the safe zone
+         that every mask is guaranteed to preserve.
+
+    Kept as SVG rather than rasterised to PNG: this repo has no image toolchain
+    (no sharp, no resvg, no ImageMagick) and adding one to ship a 512px square
+    would be a dependency for a single asset. Chrome and Edge install SVG manifest
+    icons; iOS home-screen icons still want a PNG `apple-touch-icon`, which this
+    release does not provide.
+  -->
+  <rect width="512" height="512" fill="#0b0d12" />
+  <g transform="translate(256 256) scale(0.55) translate(-24 -23)">
+    <path fill="#863bff" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" />
+  </g>
+</svg>
