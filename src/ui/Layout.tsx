@@ -74,7 +74,7 @@ export function Layout({ onOpenPrestige, onOpenDebug, onOpenSettings, burning }:
           </span>
           <div>
             <h1 className="brand-title">IDEV : ADMIN</h1>
-            <p className="brand-sub">v0.5.0 · ship it</p>
+            <p className="brand-sub">v{__APP_VERSION__} · ship it</p>
           </div>
         </div>
 
