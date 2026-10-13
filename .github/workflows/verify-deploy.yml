@@ -1,35 +1,35 @@
-# Verify and deploy.
+# Verify, release, and deploy.
 #
-# One workflow, one status. Previously CI and Deploy were separate, so a push
-# produced two checks that could disagree — and the deploy check failed three
-# times for a Pages-configuration reason that said nothing about code quality.
-# Merging them means a single check means "this commit is good and live".
-#
-# Flow:
-#   1. verify  — typecheck, test, build, balance simulation
-#   2. deploy  — only on main, only after verify passes, published atomically
-#
-# The deploy gate matters: auto-deploying without one ships a broken commit to
-# players the moment it is pushed.
+# Unified pipeline that enforces:
+#   1. verify: Lint, typecheck, workflow check, build, tests, and balance pacing simulation.
+#   2. release:
+#      - If maintainer (MaskirovkaOtdel) pushes to dev: calculates SemVer bump,
+#        synchronizes package.json and package-lock.json, fast-forwards main,
+#        creates annotated tag and GitHub release, and syncs dev.
+#   3. contributor-pr:
+#      - If non-maintainer pushes to secondary branch: ensures an open PR exists
+#        targeting dev for maintainer review.
+#   4. deploy:
+#      - Publishes production build to GitHub Pages atomically from main.
 
 name: Verify and deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, 'contrib/**']
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
-# Cancel superseded runs on the same ref. Safe here because the deploy half uses
-# `cancel-in-progress: false` at its own concurrency group, so a queued publish
-# still collapses to the newest commit rather than racing mid-swap.
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  pages: write
+  id-token: write
 
 jobs:
   verify:
@@ -47,69 +47,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Full gate, matching what contributors run locally: lint, typecheck,
-      # workflow YAML check, test, build. Lint leads because a warning there is
-      # the cheapest signal to act on, and it fails in seconds.
+      # Full gate: lint, typecheck, workflow YAML check, test, build.
       - name: Lint, typecheck, test, build
         run: npm run verify
 
-      # Reports measured pacing on every run, and gates on it.
-      #
-      # 12h rather than 2h because that is the shortest horizon where a dead
-      # payout curve is distinguishable from a healthy one: measured 1.33
-      # purchases/h fixed against 0.50/h broken. Below 12h the broken curve still
-      # buys often enough to look fine. Costs about 20s.
+      # Economy pacing gate: 12h simulation horizon.
       - name: Balance simulation
         run: npm run simulate -- --hours 12 --check
 
-  deploy:
-    name: Deploy to Pages
+  release:
+    name: Auto release and sync
     needs: verify
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.actor == 'MaskirovkaOtdel'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    # Never cancel a publish mid-swap; queued commits collapse to the latest.
-    concurrency:
-      group: pages-deploy
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build
-      - run: npm run lint
-
-      # Pages source must be set to "GitHub Actions" in Settings > Pages. Setting
-      # it to "Deploy from a branch" publishes the repository root instead, which
-      # serves the dev index.html and a blank page.
-      - uses: actions/configure-pages@v6
-
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: dist
-
-      # Atomic swap: visitors see the old build or the new one, never a partial
-      # deploy.
-      - id: deployment
-        uses: actions/deploy-pages@v5
-
-  release:
-    name: Auto release
-    needs: verify
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -121,33 +72,124 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
-      - name: Check for new version tag
-        id: check-version
+      - run: npm ci
+
+      - name: Evaluate SemVer Bump
+        id: semver
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}"
-          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
-            echo "Tag ${TAG} already exists; no release needed."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "New version detected: ${TAG}"
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          fi
+          npx tsx tools/semver-engine.ts --apply
 
-      - name: Tag and create GitHub Release
-        if: steps.check-version.outputs.should_release == 'true'
+      - name: Commit version bump
+        if: steps.semver.outputs.should_release == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "MaskirovkaOtdel"
+          git config user.email "thod.efstathiadis@gmail.com"
+          git commit -s -a -m "chore(release): bump version to ${{ steps.semver.outputs.tag }}"
+
+      - name: Merge to main and sync dev
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.check-version.outputs.tag }}
+          TAG: ${{ steps.semver.outputs.tag }}
+          SHOULD_RELEASE: ${{ steps.semver.outputs.should_release }}
+          NOTES: ${{ steps.semver.outputs.release_notes }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "${TAG}"
-          gh release create "${TAG}" \
-            --title "${TAG}" \
-            --generate-notes
+          git config user.name "MaskirovkaOtdel"
+          git config user.email "thod.efstathiadis@gmail.com"
+
+          # Fast-forward main with the verified commit(s)
+          git push origin HEAD:refs/heads/main
+
+          # If a release was cut, tag and publish GitHub release
+          if [ "$SHOULD_RELEASE" = "true" ]; then
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --notes "${NOTES}"
+          fi
+
+          # Fast-forward dev to keep branches synchronized at the exact same SHA
+          git push origin HEAD:refs/heads/dev
+
+  contributor-pr:
+    name: Contributor PR triage
+    needs: verify
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && github.actor != 'MaskirovkaOtdel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ensure PR exists for maintainer review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PR_COUNT=$(gh pr list --head "${BRANCH}" --base dev --state open --json number -q '. | length')
+          if [ "$PR_COUNT" -eq 0 ]; then
+            echo "No open PR found for ${BRANCH}. Creating pull request for maintainer review..."
+            gh pr create \
+              --base dev \
+              --head "${BRANCH}" \
+              --title "contribute: ${BRANCH} by @${{ github.actor }}" \
+              --body "### Contributor Submission
+
+          This PR was automatically created because contributor @${{ github.actor }} pushed to branch \`${BRANCH}\`.
+
+          - [x] Automated CI verification checks have passed on this commit.
+          - [x] Balance pacing simulations have passed.
+
+          Awaiting review from maintainer @MaskirovkaOtdel before merging into \`main\`." \
+              --reviewer MaskirovkaOtdel
+          else
+            echo "Open PR already exists for branch ${BRANCH}."
+          fi
+
+  deploy:
+    name: Deploy to Pages
+    needs: [verify, release]
+    if: always() && needs.verify.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') && (github.ref == 'refs/heads/main' || (github.ref == 'refs/heads/dev' && github.actor == 'MaskirovkaOtdel'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+
+      # Pages source must be set to "GitHub Actions" in Settings > Pages.
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

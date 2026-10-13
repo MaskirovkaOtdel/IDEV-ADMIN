@@ -106,7 +106,25 @@ through `0.1.9` with the schema untouched at `1`, then bump the schema *and*
 the minor together. If they were one number, every schema change would look
 like a release and "just a patch" would stop being a guarantee.
 
-### Cutting a release
+### Automated Branch and Release Pipeline
+
+This repository uses an automated CI/CD and Semantic Versioning pipeline:
+
+1. **Secondary Branch First (`dev`)**: Direct commits and pushes to `main` are strictly prevented. Maintainers and contributors work on `dev` or feature branches.
+2. **Automated Verification**: Every push to `dev`, `main`, or contributor branches triggers the full verification gate (`npm run verify`) and 12h balance simulations (`npm run simulate -- --hours 12 --check`).
+3. **Maintainer Auto-Merge & Sync**: When maintainer commits pass verification on `dev`, the workflow:
+   - Evaluates Conventional Commits since the last release tag:
+     - `feat!:` or `BREAKING CHANGE:` $\to$ **Major** bump (`1.X.X -> 2.0.0`)
+     - `feat:` $\to$ **Minor** bump (`X.1.X -> X.2.0`)
+     - `fix:`, `perf:`, `refactor:` $\to$ **Patch** bump (`X.X.1 -> X.X.2`)
+   - Synchronizes `package.json` and `package-lock.json` in lockstep with DCO sign-off.
+   - Merges and fast-forwards `main`.
+   - Tags the release (`vX.Y.Z`) and generates categorized GitHub Release notes.
+   - Fast-forwards `dev` with `main` to maintain zero branch drift.
+   - Deploys the built release atomically to GitHub Pages.
+4. **Contributor Submissions**: If a non-maintainer pushes to a branch, the verification runs and an automated Pull Request is triaged targeting `dev` for maintainer review.
+
+### Cutting a manual release (optional)
 
 ```
 git tag -a v0.1.1 -m "Short player-facing summary
@@ -114,15 +132,6 @@ git tag -a v0.1.1 -m "Short player-facing summary
 Detail on what changed and why it matters."
 git push origin v0.1.1
 ```
-
-The annotated tag message becomes the release body, so write it for someone
-reading the releases page — not as a commit message. The workflow fails if the
-tag has no message rather than publishing an empty release. Bump
-`package.json` in the same commit so the two never drift.
-
-Generated notes are off: this repo ships by pushing to `main`, and GitHub only
-summarises merged pull requests, so auto-notes listed a Dependabot PR and none
-of the actual fixes.
 
 ## Balance changes
 
