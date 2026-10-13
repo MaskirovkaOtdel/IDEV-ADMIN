@@ -154,6 +154,26 @@ jobs:
             echo "Open PR already exists for branch ${BRANCH}."
           fi
 
+  sync-dev:
+    name: Sync dev with main
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward dev to main
+        run: |
+          set -euo pipefail
+          git config user.name "MaskirovkaOtdel"
+          git config user.email "thod.efstathiadis@gmail.com"
+          git push origin HEAD:refs/heads/dev
+
   deploy:
     name: Deploy to Pages
     needs: [verify, release]
